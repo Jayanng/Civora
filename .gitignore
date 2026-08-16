@@ -1,0 +1,4 @@
+# Keep all project files local-only. Only README.md is tracked.
+*
+!README.md
+!.gitignore
