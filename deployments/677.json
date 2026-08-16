@@ -1,0 +1,19 @@
+{
+  "chainId": 677,
+  "network": "BOT Chain Mainnet",
+  "rpc": "https://rpc.botchain.ai",
+  "explorer": "https://scan.botchain.ai",
+  "deployer": "0x71708D8171F0Af75b0184861906B3678f7337E50",
+  "treasury": "0x25df058A6BF583542E69DB26cA0646C7F30B1567",
+  "deployedAt": "2026-08-16",
+  "contracts": {
+    "AgentIdentity": "0x5442B5c06d1D4c3165273465d62f04e2bA093d19",
+    "AgentFactory": "0xcAF2ADA8743b7f9DA0A96EBb6fB98F76F8810cd8",
+    "AttestationRegistry": "0x5D68b1275cb7EB3d6b5b9c09A16241276E959F46",
+    "PermissionEngine": "0x88C8FB477A0685c198285bBcAC756B7F67629bc5",
+    "InvoiceRegistry": "0xB321a3FAAf9e7C5644f0db9a7753Ef4B9F51b03C",
+    "Reputation": "0xE6b144Cb3B14Cb3deA46F9c5c910376C8467B8F9",
+    "SettlementVault": "0xA35ca76D1CB392CED9D08108083CF4e97371967B",
+    "Civora": "0x33E800223ae882dfFA26871d283287E6A06DD7d9"
+  }
+}

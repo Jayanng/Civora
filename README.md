@@ -59,7 +59,7 @@ Everything else (complex multi-agent AI reasoning, multiple asset types, advance
 
 1. Land on public website → Connect wallet (auto-switches to BOT Mainnet 677)
 2. Create two agents (Underwriter + Settlement) → Identity + Agent Wallet created on-chain
-3. Register a new Invoice (simple form: amount, due date, counterparty, IPFS/document hash)
+3. Register a new Invoice (simple form: amount, due date, counterparty, document hash)
 4. Click “Let Agent Attest / Underwrite”
 5. Watch the Underwriter Agent issue an on-chain attestation + set scoped permissions
 6. Trigger Settlement → Payment executes → Portion of value is sent to the Settlement Agent’s wallet
@@ -100,47 +100,38 @@ Everything else (complex multi-agent AI reasoning, multiple asset types, advance
 
 - Network: BOT Chain Mainnet only (Chain ID 677, RPC https://rpc.botchain.ai, Explorer https://scan.botchain.ai)
 - Frontend: Next.js + TypeScript + Tailwind + wagmi/viem
-- Contracts (Solidity):
-  - AgentIdentityRegistry (ERC-721 based identity, aligned with patterns BOT Chain has referenced including ERC-8004)
-  - AgentWallet (simple smart-contract wallet)
-  - Credential / Attestation Registry
-  - PermissionEngine
-  - InvoiceRegistry + SettlementVault
+- Contracts (Solidity) — 7 core + Reputation:
+  - AgentIdentity (ERC-721 + URIStorage, aligned with ERC-8004 Identity)
+  - AgentWallet (smart-contract wallet, ERC-1271)
+  - AgentFactory (one tx: identity + wallet)
+  - AttestationRegistry (underwriting commitments)
+  - PermissionEngine (value / selector / time bounds)
+  - InvoiceRegistry
+  - SettlementVault (native BOT escrow + 95/3/1/1 split)
+  - Reputation (8th — score updates after successful settlement)
 - All contracts deployed and verified on mainnet
 - Events for every critical step so the Activity feed and Explorer links work cleanly
 
 ---
 
-## 7. Build Plan (Remaining Time – Aggressive but Realistic)
+## 7. Build Plan
 
-### Day 1 (Today)
-- Project setup + wagmi config for Chain ID 677
-- Deploy and verify core contracts (Identity, Permission, InvoiceRegistry, Settlement)
+Execution source of truth: `BUILD_PLAN.md` (10 gated phases). Do not start the next phase until the current gate is green.
 
-### Day 2
-- Agent creation (identity + wallet)
-- Basic dashboard + wallet connection
-- Register Invoice form
+| Phase | Work |
+|-------|------|
+| 0 | Scaffold Next.js + Foundry, tokens, wagmi 677 |
+| 1 | Contracts + Foundry tests (7 core + Reputation) |
+| 2 | Deploy + verify on mainnet 677 |
+| 3 | Wallet, create agents, dashboard reads |
+| 4 | Register + fund invoice (document **hash only**, no IPFS) |
+| 5 | Real GMI underwriter + on-chain attest |
+| 6 | Settle, 95/3/1/1 fees, reputation |
+| 7 | Unauthorized drain revert |
+| 8 | Activity feed, landing, polish |
+| 9 | README, 90s demo video, submission |
 
-### Day 3
-- Attestation issuance + permission assignment
-- Permission enforcement (include a deliberate blocked-action demo)
-- Settlement + revenue to Agent Wallet
-
-### Day 4
-- Full end-to-end loop working on mainnet
-- Activity feed + Explorer links
-- UI polish and loading states
-
-### Day 5
-- Landing page + final polish
-- Record 90-second silent demo video + short walkthrough
-- Write strong, accurate README (reference the real Research Series #06, state future-integration language only)
-
-### Final buffer
-- Testing, gas checks, GitHub cleanup, submission form
-
-**Daily rule:** Do not move forward until the previous day’s features are fully working and visible on mainnet.
+**Rule:** Do not move forward until the previous phase is fully working. User-facing demo must be on BOT Chain Mainnet (677).
 
 ---
 

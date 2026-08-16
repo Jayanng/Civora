@@ -1,0 +1,9 @@
+{
+  "name": "civora",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @civora/web dev",
+    "build": "pnpm --filter @civora/web build",
+    "lint": "pnpm --filter @civora/web lint"
+  }
+}

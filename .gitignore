@@ -1,4 +1,38 @@
-# Keep all project files local-only. Only README.md is tracked.
-*
-!README.md
-!.gitignore
+# secrets
+.env
+.env.*
+!.env.example
+
+# deps / build
+node_modules/
+.pnpm-store/
+apps/web/.next/
+apps/web/out/
+apps/web/tsconfig.tsbuildinfo
+
+# foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+contracts/lib/
+
+# local data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# keep design specs local (not on GitHub)
+BOTCHAIN_DOCS.md
+BUILD_PLAN.md
+COMPONENTS.md
+DESIGN_PACKAGE.md
+DESIGN_SYSTEM.md
+JUDGES_CRITERIA.md
+LAYOUT_PAGES.md
+LOCKED_SCOPE.md
+icons/

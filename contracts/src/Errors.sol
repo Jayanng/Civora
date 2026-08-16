@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+error NotFactory();
+error NotController();
+error NotVault();
+error NotAttestor();
+error NotPayer();
+error NotUnderwriter();
+error InvalidAgentType();
+error InvalidName();
+error InvalidAmount();
+error InvalidFundingAmount(uint256 sent, uint256 expected);
+error InvalidDocumentHash();
+error InvalidDueDate();
+error InvalidCounterparty();
+error InvalidState(uint8 current, uint8 expected);
+error InvalidDecision();
+error InvalidApprovedAmount();
+error InvalidExpiry();
+error AlreadyAttested();
+error PermissionDenied();
+error GrantRevoked();
+error Expired();
+error ZeroAddress();
+error WalletAlreadySet();
+error AlreadySettled();
+error NothingToRefund();
+error UnauthorizedCaller();
+error AlreadySet();
+error NotAdmin();
+error NotSettlement();
+error TransferFailed(address to, uint256 amount);
