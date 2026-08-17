@@ -13,6 +13,7 @@ import {AssetType, AssetState} from "../src/Types.sol";
 import {InvalidHolder, InvalidTargetHash, InvalidMaturity} from "../src/Errors.sol";
 import {SettlementAndPenaltyVault} from "../src/SettlementAndPenaltyVault.sol";
 import {Reputation} from "../src/Reputation.sol";
+import {CivoraGreen} from "../src/CivoraGreen.sol";
 
 contract CivoraGreenTest is Test {
     AgentIdentity internal identity;
@@ -22,6 +23,7 @@ contract CivoraGreenTest is Test {
     GreenAssetRegistry internal assets;
     SettlementAndPenaltyVault internal vault;
     Reputation internal reputation;
+    CivoraGreen internal civora;
     address internal treasury = makeAddr("treasury");
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
@@ -54,8 +56,12 @@ contract CivoraGreenTest is Test {
         reputation = new Reputation();
         vault = new SettlementAndPenaltyVault(identity, assets, credentials, permissions, reputation, treasury);
         assets.setVault(address(vault));
-        assets.setAttestor(address(this));
         reputation.setVault(address(vault));
+
+        civora = new CivoraGreen(identity, factory, assets, credentials, permissions, vault, reputation);
+        assets.setAttestor(address(civora));
+        credentials.setCivora(address(civora));
+        permissions.setCivora(address(civora));
 
         vm.deal(alice, 10 ether);
     }
@@ -154,9 +160,7 @@ contract CivoraGreenTest is Test {
 
     function test_civoraCanCreateGrant() public {
         _submitApprove();
-        address civoraAddr = makeAddr("civora");
-        permissions.setCivora(civoraAddr);
-        vm.prank(civoraAddr);
+        vm.prank(address(civora));
         uint256 grantId = permissions.grant(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether, uint64(block.timestamp + 7 days));
         assertTrue(grantId > 0);
         permissions.check(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether);
@@ -256,19 +260,9 @@ contract CivoraGreenTest is Test {
 
     function _driveToMonitored(uint256 assetId, uint256 p, uint256 c, MonitorOutcome outcome, uint16 penaltyBps) internal {
         vm.prank(alice);
-        credentials.submitUnderwrite(
-            assetId, uwId, REPORT, UnderwriteDecision.Approve, p, c,
-            uint64(block.timestamp + 7 days), MODEL
-        );
+        civora.underwriteCommit(assetId, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
         vm.prank(alice);
-        permissions.grant(assetId, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
-        assets.markUnderwritten(assetId);
-        assets.markMonitored(assetId);
-        vm.prank(alice);
-        credentials.submitMonitor(
-            assetId, monId, REPORT, outcome, penaltyBps, EVIDENCE,
-            uint64(block.timestamp), uint64(block.timestamp + 7 days), MODEL
-        );
+        civora.monitorCommit(assetId, monId, REPORT, outcome, penaltyBps, EVIDENCE, uint64(block.timestamp), uint64(block.timestamp + 7 days), MODEL);
     }
 
     function test_fundRequiresPrincipalPlusCoupon() public {
@@ -340,13 +334,7 @@ contract CivoraGreenTest is Test {
         uint256 id = _registerAsset(p, c);
         _fundAsset(id, p, c);
         vm.prank(alice);
-        credentials.submitUnderwrite(
-            id, uwId, REPORT, UnderwriteDecision.Approve, p, c,
-            uint64(block.timestamp + 7 days), MODEL
-        );
-        vm.prank(alice);
-        permissions.grant(id, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
-        assets.markUnderwritten(id);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
 
         vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(InvalidState.selector, 3, 4));
@@ -369,7 +357,9 @@ contract CivoraGreenTest is Test {
         );
         vm.prank(alice);
         permissions.grant(id, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
+        vm.prank(address(civora));
         assets.markUnderwritten(id);
+        vm.prank(address(civora));
         assets.markMonitored(id);
         vm.prank(alice);
         credentials.submitMonitor(
@@ -416,10 +406,7 @@ contract CivoraGreenTest is Test {
         uint256 id = _registerAsset(p, c);
         _fundAsset(id, p, c);
         vm.prank(alice);
-        credentials.submitUnderwrite(
-            id, uwId, REPORT, UnderwriteDecision.Reject, 0, 0,
-            uint64(block.timestamp + 7 days), MODEL
-        );
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Reject, 0, 0, uint64(block.timestamp + 7 days), MODEL);
         uint256 aliceAfterFund = alice.balance;
         vm.prank(alice);
         vault.refund(id);
@@ -444,17 +431,76 @@ contract CivoraGreenTest is Test {
         uint256 id = _registerAsset(p, c);
         _fundAsset(id, p, c);
         vm.prank(alice);
-        credentials.submitUnderwrite(
-            id, uwId, REPORT, UnderwriteDecision.Approve, p, c,
-            uint64(block.timestamp + 7 days), MODEL
-        );
-        vm.prank(alice);
-        permissions.grant(id, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
-        assets.markUnderwritten(id);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
         uint256 aliceAfterFund = alice.balance;
         vm.warp(block.timestamp + 8 days);
         vm.prank(alice);
         vault.refund(id);
         assertEq(alice.balance, aliceAfterFund + p + c);
+    }
+
+    function test_underwriteCommitApproveGrantsSettle() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
+        (, , , , , , , , , , , AssetState state) = assets.assets(id);
+        assertEq(uint8(state), uint8(AssetState.Underwritten));
+        permissions.check(id, saId, vault.settle.selector, p + c);
+    }
+
+    function test_underwriteCommitRejectLeavesFunded() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Reject, 0, 0, uint64(block.timestamp + 7 days), MODEL);
+        (, , , , , , , , , , , AssetState state) = assets.assets(id);
+        assertEq(uint8(state), uint8(AssetState.Funded));
+        vm.prank(alice);
+        vm.expectRevert(PermissionDenied.selector);
+        permissions.check(id, saId, vault.settle.selector, p + c);
+    }
+
+    function test_monitorCommitThenSettle() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
+        vm.prank(alice);
+        civora.monitorCommit(id, monId, REPORT, MonitorOutcome.TargetMet, 0, EVIDENCE, uint64(block.timestamp), uint64(block.timestamp + 7 days), MODEL);
+        (, , , , , , , , , , , AssetState state) = assets.assets(id);
+        assertEq(uint8(state), uint8(AssetState.Monitored));
+        vm.prank(alice);
+        vault.settle(id);
+    }
+
+    function test_fullMissedTargetPath() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
+        vm.prank(alice);
+        civora.monitorCommit(id, monId, REPORT, MonitorOutcome.TargetMissed, 2000, EVIDENCE, uint64(block.timestamp), uint64(block.timestamp + 7 days), MODEL);
+        uint256 bobBefore = bob.balance;
+        uint256 treBefore = treasury.balance;
+        vm.prank(alice);
+        vault.settle(id);
+        uint256 haircut = c * 2000 / 10_000;
+        uint256 live = c - haircut;
+        uint256 protocol = live * 300 / 10_000;
+        uint256 uw = live * 100 / 10_000;
+        uint256 mon = live * 100 / 10_000;
+        uint256 sa = live * 100 / 10_000;
+        uint256 holderCoupon = live - protocol - uw - mon - sa;
+        assertEq(bob.balance - bobBefore, p + holderCoupon);
+        assertEq(treasury.balance - treBefore, protocol + haircut);
     }
 }
