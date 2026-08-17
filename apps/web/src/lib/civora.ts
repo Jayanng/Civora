@@ -41,11 +41,20 @@ export const reputationAbi = parseAbi([
 ]);
 
 export const invoicesAbi = parseAbi([
+  "function register(address counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint256 underwriterId, uint256 settlementAgentId) external returns (uint256 invoiceId)",
   "function invoices(uint256 invoiceId) external view returns (address payer, address counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint8 state, uint256 underwriterId, uint256 settlementAgentId)",
+]);
+
+export const vaultAbi = parseAbi([
+  "function fund(uint256 invoiceId) external payable",
 ]);
 
 export const agentCreatedItem = parseAbiItem(
   "event AgentCreated(uint256 indexed agentId, address indexed owner, uint8 agentType, address wallet, string name)",
+);
+
+export const invoiceRegisteredItem = parseAbiItem(
+  "event InvoiceRegistered(uint256 indexed invoiceId, address indexed payer, address indexed counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint256 underwriterId, uint256 settlementAgentId)",
 );
 
 export const INVOICE_STATE_NAMES = {
