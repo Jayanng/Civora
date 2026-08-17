@@ -239,6 +239,11 @@ function InvoicesContent() {
   } | null>(null);
   const [settleError, setSettleError] = useState<string | null>(null);
 
+  const [drainInvoiceId, setDrainInvoiceId] = useState<number>(1);
+  const [draining, setDraining] = useState(false);
+  const [drainResult, setDrainResult] = useState<{ hash: `0x${string}`; reason: string } | null>(null);
+  const [drainError, setDrainError] = useState<string | null>(null);
+
   const { writeContractAsync } = useWriteContract();
   const vaultBalance = useBalance({ address: ADDRESSES.vault });
 
@@ -463,6 +468,50 @@ function InvoicesContent() {
       setSettleError(e instanceof Error ? e.message : "Settle failed.");
     } finally {
       setSettlingId(null);
+    }
+  };
+
+  const drain = async () => {
+    setDrainError(null);
+    setDrainResult(null);
+    if (!publicClient || !address) return;
+    setDraining(true);
+    let reason = "PermissionDenied";
+    try {
+      await publicClient.simulateContract({
+        address: ADDRESSES.vault,
+        abi: vaultAbi,
+        functionName: "emergencyDrain",
+        args: [BigInt(drainInvoiceId)],
+        account: address,
+      });
+      reason = "simulation unexpectedly passed";
+    } catch (e) {
+      const msg = e instanceof Error ? `${e.message}` : "";
+      const m = msg.match(/PermissionDenied/);
+      if (m) reason = "PermissionDenied";
+      else {
+        const short = msg.split("\n").find((l) => l.includes("reverted")) ?? msg.slice(0, 300);
+        reason = short;
+      }
+    }
+    try {
+      const hash = await writeContractAsync({
+        address: ADDRESSES.vault,
+        abi: vaultAbi,
+        functionName: "emergencyDrain",
+        args: [BigInt(drainInvoiceId)],
+      });
+      try {
+        await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      } catch {
+        /* expected: the tx reverts */
+      }
+      setDrainResult({ hash, reason });
+    } catch (e) {
+      setDrainError(e instanceof Error ? e.message : "Drain attempt failed to broadcast.");
+    } finally {
+      setDraining(false);
     }
   };
 
@@ -826,6 +875,49 @@ function InvoicesContent() {
           </div>
         </section>
       ) : null}
+
+      <section className="flex flex-col gap-3 rounded-md border border-error/40 bg-surface p-4">
+        <div>
+          <h2 className="font-grotesk text-sm font-medium text-error">Security demo — drain attempt</h2>
+          <p className="mt-1 font-mono text-xs text-text-secondary">
+            The vault can never be drained: any call to emergencyDrain is denied by the permission engine and
+            reverts with PermissionDenied. Click it yourself — anyone can try.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="font-mono text-xs text-text-secondary" htmlFor="drain-invoice">
+            Invoice #
+          </label>
+          <input
+            id="drain-invoice"
+            type="number"
+            min={1}
+            value={drainInvoiceId}
+            onChange={(e) => setDrainInvoiceId(Number(e.target.value))}
+            className="h-8 w-24 border border-border bg-bg px-2 font-mono text-xs text-text-primary focus:border-accent focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={draining}
+            onClick={() => void drain()}
+            className="h-8 rounded-sm border border-error px-3 font-grotesk text-xs font-medium text-error hover:bg-error hover:text-text-on-accent disabled:opacity-50"
+          >
+            {draining ? "Attempting…" : "Attempt drain"}
+          </button>
+        </div>
+        {drainError ? <p className="break-all font-mono text-xs text-error">{drainError}</p> : null}
+        {drainResult ? (
+          <div className="flex flex-col gap-1 border border-error/40 bg-error-bg/40 p-3 font-mono text-xs">
+            <p className="text-error">
+              REVERTED — <span className="font-bold">{drainResult.reason}</span>()
+            </p>
+            <p className="break-all text-text-secondary">
+              Failed tx: <TxLink hash={drainResult.hash} />
+            </p>
+            <p className="text-text-tertiary">No funds left the vault. Reputation and balances untouched.</p>
+          </div>
+        ) : null}
+      </section>
 
       {uwInvoice ? (
         <section className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4">

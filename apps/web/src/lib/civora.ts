@@ -48,6 +48,8 @@ export const invoicesAbi = parseAbi([
 export const vaultAbi = parseAbi([
   "function fund(uint256 invoiceId) external payable",
   "function settle(uint256 invoiceId) external",
+  "function emergencyDrain(uint256 invoiceId) external",
+  "error PermissionDenied()",
 ]);
 
 export const civoraAbi = parseAbi([
