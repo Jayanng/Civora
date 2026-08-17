@@ -51,10 +51,10 @@ Create the three agents before recording. The connected issuer must own all thre
 
 Use the same asset setup but provide evidence that causes the monitor to return `targetMissed`.
 
-1. Commit the monitor result with `penaltyBps = 2000`.
+1. Commit the monitor result returned by the real model. Recorded asset #3 returned `penaltyBps = 10000`.
 2. Settle the asset.
 3. Show `Settled · Coupon Haircut`.
-4. Show 20% of the approved coupon sent to treasury as haircut.
+4. Show the model-selected coupon haircut sent to treasury. Recorded asset #3 applied a 100% coupon haircut.
 5. Show fees calculated only from the remaining live coupon.
 6. Confirm principal remains 100% to the holder.
 
