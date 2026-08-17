@@ -5,13 +5,15 @@ import {Test} from "forge-std/Test.sol";
 import {AgentIdentity} from "../src/AgentIdentity.sol";
 import {AgentFactory} from "../src/AgentFactory.sol";
 import {AgentType, UnderwriteDecision, MonitorOutcome} from "../src/Types.sol";
-import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController} from "../src/Errors.sol";
+import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired} from "../src/Errors.sol";
 import {CredentialRegistry} from "../src/CredentialRegistry.sol";
+import {GreenPermissionEngine} from "../src/GreenPermissionEngine.sol";
 
 contract CivoraGreenTest is Test {
     AgentIdentity internal identity;
     AgentFactory internal factory;
     CredentialRegistry internal credentials;
+    GreenPermissionEngine internal permissions;
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
 
@@ -35,6 +37,8 @@ contract CivoraGreenTest is Test {
         vm.stopPrank();
 
         credentials = new CredentialRegistry(identity);
+        permissions = new GreenPermissionEngine(identity);
+        permissions.setCredentialRegistry(credentials);
     }
 
     function test_createThreeAgentTypes() public {
@@ -111,5 +115,44 @@ contract CivoraGreenTest is Test {
             1, uwId, REPORT, UnderwriteDecision.Reject, 0, 0,
             uint64(block.timestamp + 7 days), MODEL
         );
+    }
+
+    function _submitApprove() internal {
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            1, uwId, REPORT, UnderwriteDecision.Approve, 1 ether, 0.1 ether,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+    }
+
+    function test_civoraCanCreateGrant() public {
+        _submitApprove();
+        address civoraAddr = makeAddr("civora");
+        permissions.setCivora(civoraAddr);
+        vm.prank(civoraAddr);
+        uint256 grantId = permissions.grant(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether, uint64(block.timestamp + 7 days));
+        assertTrue(grantId > 0);
+        permissions.check(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether);
+    }
+
+    function test_underwriterControllerCanCreateGrant() public {
+        _submitApprove();
+        vm.prank(alice);
+        uint256 grantId = permissions.grant(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether, uint64(block.timestamp + 7 days));
+        assertTrue(grantId > 0);
+    }
+
+    function test_nonSettlementAgentCannotReceiveGrant() public {
+        _submitApprove();
+        vm.prank(alice);
+        vm.expectRevert(NotSettlement.selector);
+        permissions.grant(1, uwId, bytes4(keccak256("settle(uint256)")), 1.1 ether, uint64(block.timestamp + 7 days));
+    }
+
+    function test_checkWithoutGrantRevertsPermissionDenied() public {
+        _submitApprove();
+        vm.prank(alice);
+        vm.expectRevert(PermissionDenied.selector);
+        permissions.check(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether);
     }
 }
