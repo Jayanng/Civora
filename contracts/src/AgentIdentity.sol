@@ -47,7 +47,7 @@ contract AgentIdentity is ERC721, ERC721URIStorage, Ownable {
         returns (uint256 agentId)
     {
         if (to == address(0)) revert ZeroAddress();
-        if (agentType != AgentType.Underwriter && agentType != AgentType.Settlement) {
+        if (agentType != AgentType.Underwriter && agentType != AgentType.ComplianceMonitor && agentType != AgentType.Settlement) {
             revert InvalidAgentType();
         }
         agentId = _nextId++;

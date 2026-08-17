@@ -22,7 +22,7 @@ contract AgentFactory {
     function createAgent(AgentType agentType, string calldata name) external returns (uint256 agentId, address wallet) {
         uint256 nameLen = bytes(name).length;
         if (nameLen < 3 || nameLen > 32) revert InvalidName();
-        if (agentType != AgentType.Underwriter && agentType != AgentType.Settlement) {
+        if (agentType != AgentType.Underwriter && agentType != AgentType.ComplianceMonitor && agentType != AgentType.Settlement) {
             revert InvalidAgentType();
         }
 
