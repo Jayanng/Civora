@@ -2,7 +2,13 @@ import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
 import { agentCreatedItem } from "./civora";
 
-const INDEX_KEY = "civora.agents.v1";
+const INDEX_KEY = "civora.agents.v2";
+
+const DEFAULT_AGENTS: IndexedAgent[] = [
+  { agentId: 1, txHash: "0x360fe46e3437ea3045c48c979d1b33b080b485ba81dd8da69dd5c844c476849c" },
+  { agentId: 2, txHash: "0x102ba23317ab70d287849d74fdb9376fb068e8f98850eafe6781f1de3273e754" },
+  { agentId: 3, txHash: "0xb3ededed6db04ce23c1d0e755f2082829b9b21036cbb39e3c221157a9f770e9d" },
+];
 
 export interface IndexedAgent {
   agentId: number;
@@ -12,16 +18,17 @@ export interface IndexedAgent {
 function readIndexFromStorage(): IndexedAgent[] {
   try {
     const raw = window.localStorage.getItem(INDEX_KEY);
-    if (!raw) return [];
+     if (!raw) return DEFAULT_AGENTS;
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (a): a is IndexedAgent =>
-        typeof a === "object" &&
-        a !== null &&
-        typeof a.agentId === "number" &&
-        typeof a.txHash === "string",
-    );
+     const indexed = parsed.filter(
+       (a): a is IndexedAgent =>
+         typeof a === "object" &&
+         a !== null &&
+         typeof a.agentId === "number" &&
+         typeof a.txHash === "string",
+     );
+     return [...DEFAULT_AGENTS.filter((demo) => !indexed.some((agent) => agent.agentId === demo.agentId)), ...indexed];
   } catch {
     return [];
   }

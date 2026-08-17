@@ -90,6 +90,6 @@ The prototype proves controlled settlement and auditability, not legal complianc
 4. Governance and dispute resolution.
 5. SDK for third-party RWA builders.
 
-## Public Proof
+## Mainnet Proof
 
-The hosted deployment URL and fresh mainnet proof transaction links are recorded in the final README after the primary green lifecycle is completed.
+The primary contracts and two green lifecycle records are listed in `README.md` and `DEMO_RUNBOOK.md`. The target-met and target-missed settlements, agent reputation updates, and failed drain proof are verifiable on the BOT Explorer.

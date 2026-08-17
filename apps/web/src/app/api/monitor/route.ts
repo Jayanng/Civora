@@ -77,8 +77,10 @@ export async function POST(req: Request) {
     principalWei?: string;
     couponWei?: string;
     targetHash?: string;
+    targetText?: string;
     documentHash?: string;
     evidenceHash?: string;
+    evidenceText?: string;
     maturity?: number;
   };
   try {
@@ -86,14 +88,14 @@ export async function POST(req: Request) {
   } catch {
     return Response.json({ error: "invalid body" }, { status: 400 });
   }
-  const { assetId, principalWei, couponWei, targetHash, documentHash, evidenceHash, maturity } = body;
-  if (!assetId || !principalWei || !couponWei || !targetHash || !documentHash || !evidenceHash || typeof maturity !== "number") {
+  const { assetId, principalWei, couponWei, targetHash, targetText, documentHash, evidenceHash, evidenceText, maturity } = body;
+  if (!assetId || !principalWei || !couponWei || !targetHash || !targetText || !documentHash || !evidenceHash || !evidenceText || typeof maturity !== "number") {
     return Response.json({ error: "missing fields" }, { status: 400 });
   }
 
   const now = Math.floor(Date.now() / 1000);
   const userContent = JSON.stringify({
-    assetId, principalWei, couponWei, targetHash, documentHash, evidenceHash, maturity, model,
+    assetId, principalWei, couponWei, targetHash, targetText, documentHash, evidenceHash, evidenceText, maturity, model,
   });
 
   let completion: { choices?: Array<{ message?: { content?: string } }> };

@@ -11,6 +11,25 @@
 - Holder: dedicated demo holder address, distinct from treasury
 - Agent roles: Underwriter, Compliance Monitor, Settlement
 
+## Recorded Mainnet Proof
+
+Target-met asset #1:
+
+- Register: `0xcafb3cd31e762f31e9ce7c6a42cd972f317bedd4634327c3e5b1d71d8a8f16fb`
+- Fund: `0xe5670cca0a6ee303b5cd9b138648c0da24add1bf9d0930edfe6727c58175e882`
+- Underwrite: `0xf24c19a294de89f272c43385084967c4f6e4f2c9f8cdf5f5728888a81c274a63`
+- Monitor: `0x0df4ada6a389ef31c6c8b313016b6e3af314693e12c1f2b076448c23ca88a6f8`
+- Settle: `0xca0fd3b11ea39fa939a99ebd5f1bc3537aca57b8ffa96dfac341fe4c81adaab9`
+- Drain failed: `0xab6ea040ddb9c294e01d45ae29953dcacacf8ae05e43c441d3c0d860e5fa6e41`
+
+Target-missed asset #3:
+
+- Register: `0xb24a1473c4ee5f8c7edbf88b755262454890f106a02e19e9b800b07ad11ac235`
+- Fund: `0xb53128299a41f46bbb10394416b126d835f9a5e7728274d7e0e462279efd9c39`
+- Underwrite: `0x12a9e71ca4d6abda26e93d3318919d4b5b73ce40f0a87bc7e9796b09aa3343d4`
+- Monitor: `0xd471c547261a501105ef28929c84954df4fbaa875e2785f7f73a37ebcda53ebf`
+- Settle: `0x887547b7fed1406d0a9fb9ccc956997415eaecf17876c4fad46d163575bb93d8`
+
 Create the three agents before recording. The connected issuer must own all three selected agent identities because asset registration validates role ownership.
 
 ## Target Met Path

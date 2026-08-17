@@ -305,7 +305,7 @@ function AssetsPageContent() {
       const evidenceHash = keccak256(toBytes(evidenceText.trim()));
       const res = await fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
         assetId: String(data.assetId), principalWei: data.principalWei, couponWei: data.couponWei, targetHash: data.targetHash,
-        documentHash: data.documentHash, evidenceHash, maturity: data.maturity,
+        targetText, documentHash: data.documentHash, evidenceHash, evidenceText, maturity: data.maturity,
       }) });
       const payload = (await res.json()) as { error?: string; reportHash?: `0x${string}`; report?: MonitorReport };
       if (!res.ok || !payload.reportHash || !payload.report) throw new Error(payload.error ?? "Monitor failed.");
