@@ -68,7 +68,7 @@ function AgentRow({ agentId, txHash }: IndexedAgent) {
         {loading ? "…" : name.data ?? "—"}
       </td>
       <td className="py-3 pr-4 text-sm text-text-secondary">
-        {agentType.data ? AGENT_TYPE_NAMES[agentType.data as 1 | 2] ?? "—" : "…"}
+        {agentType.data ? AGENT_TYPE_NAMES[agentType.data as 1 | 2 | 3] ?? "—" : "…"}
       </td>
       <td className="py-3 pr-4">
         <a
@@ -111,7 +111,7 @@ export default function AgentsPage() {
 
   const index = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
   const [name, setName] = useState("");
-  const [agentType, setAgentType] = useState<1 | 2>(AGENT_TYPE.Underwriter);
+  const [agentType, setAgentType] = useState<1 | 2 | 3>(AGENT_TYPE.Underwriter);
   const [formError, setFormError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [txHash, setTxHash] = useState<`0x${string}` | null>(null);
@@ -207,10 +207,11 @@ export default function AgentsPage() {
             <span className="text-xs uppercase tracking-widest text-text-secondary">Type</span>
             <select
               value={agentType}
-              onChange={(e) => setAgentType(Number(e.target.value) as 1 | 2)}
+              onChange={(e) => setAgentType(Number(e.target.value) as 1 | 2 | 3)}
               className="h-10 rounded-none border border-border-strong bg-bg px-3 font-plex text-sm text-text-primary focus:border-accent focus:outline-none"
             >
               <option value={AGENT_TYPE.Underwriter}>Underwriter</option>
+              <option value={AGENT_TYPE.ComplianceMonitor}>Compliance Monitor</option>
               <option value={AGENT_TYPE.Settlement}>Settlement</option>
             </select>
           </label>
