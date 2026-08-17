@@ -3,24 +3,24 @@ import { keccak256, toBytes } from "viem";
 import { putReport } from "@/lib/report-store";
 
 const SYSTEM_PROMPT = [
-  "You are the Civora Underwriter Agent for sustainability-linked assets on BOT Chain.",
+  "You are the Civora Compliance Monitor Agent for sustainability-linked assets on BOT Chain.",
   "Return only JSON matching the schema.",
-  "You decide whether this asset's principal and coupon may settle, and the maximum BOT that may move.",
-  "`approvedPrincipalWei` must be exactly the asset's `principalWei` (no partial principal).",
-  "`approvedCouponWei` must be <= `couponWei` and > 0.",
-  "Reject if holder is zero address, principal or coupon is 0, target hash or document hash is zero, or maturity is in the past.",
-  "Be conservative. If data is thin, approve a lower coupon cap or reject.",
+  "You evaluate whether the sustainability target was met or missed based on the evidence provided.",
+  "`targetMet` means penaltyBps must be 0.",
+  "`targetMissed` means penaltyBps must be between 1 and 10000.",
+  "`evidenceHash` identifies the evidence payload; it must be non-zero.",
   "`reasoning` is short, factual, no marketing.",
   "",
   "Response schema:",
   JSON.stringify({
-    schema: "civora.underwrite.v1",
-    decision: '"approve" | "reject"',
-    approvedPrincipalWei: '"0" if reject, the full principalWei if approve',
-    approvedCouponWei: '"0" if reject, > 0 if approve, <= couponWei',
-    expiresAt: "unix seconds, > now+10min and <= maturity",
+    schema: "civora.monitor.v1",
+    outcome: '"targetMet" | "targetMissed"',
+    penaltyBps: "0 if targetMet, 1-10000 if targetMissed",
+    evidenceHash: "0x-prefixed hex string, non-zero",
+    observedAt: "unix seconds of the observation",
+    expiresAt: "unix seconds, > now+10min and <= asset maturity",
     riskScore: "integer 0-100",
-    conditions: "string[], max 5",
+    findings: "string[], max 5",
     reasoning: "string, max 500 chars",
     model: "the model id you are running as",
   }),
@@ -68,33 +68,31 @@ function parseModelJson(content: string): Record<string, unknown> | null {
 export async function POST(req: Request) {
   const { key, model, baseUrl } = loadGmiConfig();
   if (!key) {
-    return Response.json({ error: "underwriter unavailable" }, { status: 503 });
+    return Response.json({ error: "monitor unavailable" }, { status: 503 });
   }
 
   let body: {
     assetId?: string;
     principalWei?: string;
     couponWei?: string;
-    maturity?: number;
-    holder?: string;
-    issuer?: string;
     targetHash?: string;
     documentHash?: string;
-    assetType?: number;
+    evidenceHash?: string;
+    maturity?: number;
   };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return Response.json({ error: "invalid body" }, { status: 400 });
   }
-  const { assetId, principalWei, couponWei, maturity, holder, issuer, targetHash, documentHash, assetType } = body;
-  if (!assetId || !principalWei || !couponWei || typeof maturity !== "number" || !holder || !issuer || !targetHash || !documentHash || typeof assetType !== "number") {
+  const { assetId, principalWei, couponWei, targetHash, documentHash, evidenceHash, maturity } = body;
+  if (!assetId || !principalWei || !couponWei || !targetHash || !documentHash || !evidenceHash || typeof maturity !== "number") {
     return Response.json({ error: "missing fields" }, { status: 400 });
   }
 
   const now = Math.floor(Date.now() / 1000);
   const userContent = JSON.stringify({
-    assetId, principalWei, couponWei, maturity, holder, issuer, targetHash, documentHash, assetType, model,
+    assetId, principalWei, couponWei, targetHash, documentHash, evidenceHash, maturity, model,
   });
 
   let completion: { choices?: Array<{ message?: { content?: string } }> };
@@ -131,60 +129,50 @@ export async function POST(req: Request) {
 
   const report = parsed as {
     schema?: unknown;
-    decision?: unknown;
-    approvedPrincipalWei?: unknown;
-    approvedCouponWei?: unknown;
+    outcome?: unknown;
+    penaltyBps?: unknown;
+    evidenceHash?: unknown;
+    observedAt?: unknown;
     expiresAt?: unknown;
     riskScore?: unknown;
-    conditions?: unknown;
+    findings?: unknown;
     reasoning?: unknown;
     model?: unknown;
   };
 
   const invalid = (reason: string) => Response.json({ error: reason }, { status: 422 });
 
-  if (report.schema !== "civora.underwrite.v1") return invalid("schema mismatch");
+  if (report.schema !== "civora.monitor.v1") return invalid("schema mismatch");
   if (report.model !== model) return invalid("model mismatch");
-  if (report.decision !== "approve" && report.decision !== "reject") return invalid("bad decision");
-  if (typeof report.approvedPrincipalWei !== "string" || !/^\d+$/.test(report.approvedPrincipalWei)) {
-    return invalid("bad approvedPrincipalWei");
-  }
-  if (typeof report.approvedCouponWei !== "string" || !/^\d+$/.test(report.approvedCouponWei)) {
-    return invalid("bad approvedCouponWei");
-  }
-  if (typeof report.expiresAt !== "number" || !Number.isInteger(report.expiresAt)) {
-    return invalid("bad expiresAt");
-  }
+  if (report.outcome !== "targetMet" && report.outcome !== "targetMissed") return invalid("bad outcome");
+  if (typeof report.penaltyBps !== "number" || !Number.isInteger(report.penaltyBps)) return invalid("bad penaltyBps");
+  if (report.outcome === "targetMet" && report.penaltyBps !== 0) return invalid("targetMet must have zero penalty");
+  if (report.outcome === "targetMissed" && (report.penaltyBps < 1 || report.penaltyBps > 10000)) return invalid("targetMissed penalty must be 1-10000");
+  if (typeof report.evidenceHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(report.evidenceHash)) return invalid("bad evidenceHash");
+  if (typeof report.observedAt !== "number" || !Number.isInteger(report.observedAt)) return invalid("bad observedAt");
+  if (report.observedAt > now) return invalid("observedAt in the future");
+  if (typeof report.expiresAt !== "number" || !Number.isInteger(report.expiresAt)) return invalid("bad expiresAt");
+  if (report.expiresAt <= now + 600) return invalid("expiresAt too soon");
+  if (report.expiresAt > maturity) return invalid("expiresAt after maturity");
   if (typeof report.riskScore !== "number" || !Number.isInteger(report.riskScore) || report.riskScore < 0 || report.riskScore > 100) {
     return invalid("bad riskScore");
   }
-  if (!Array.isArray(report.conditions) || report.conditions.length > 5 || report.conditions.some((c) => typeof c !== "string")) {
-    return invalid("bad conditions");
+  if (!Array.isArray(report.findings) || report.findings.length > 5 || report.findings.some((f) => typeof f !== "string")) {
+    return invalid("bad findings");
   }
   if (typeof report.reasoning !== "string" || report.reasoning.length > 500) return invalid("bad reasoning");
-
-  const principal = BigInt(principalWei);
-  const coupon = BigInt(couponWei);
-  const approvedPrincipal = BigInt(report.approvedPrincipalWei);
-  const approvedCoupon = BigInt(report.approvedCouponWei);
-
-  if (approvedPrincipal > principal) return invalid("approvedPrincipalWei > principalWei");
-  if (approvedCoupon > coupon) return invalid("approvedCouponWei > couponWei");
-  if (report.decision === "reject" && (approvedPrincipal !== 0n || approvedCoupon !== 0n)) return invalid("reject must have zero approvals");
-  if (report.decision === "approve" && (approvedPrincipal === 0n || approvedCoupon === 0n)) return invalid("approve must have positive approvals");
-  if (report.expiresAt <= now + 600) return invalid("expiresAt too soon");
-  if (report.expiresAt > maturity) return invalid("expiresAt after maturity");
 
   const canonicalReport = JSON.stringify(
     Object.fromEntries(
       Object.entries({
         schema: report.schema,
-        decision: report.decision,
-        approvedPrincipalWei: report.approvedPrincipalWei,
-        approvedCouponWei: report.approvedCouponWei,
+        outcome: report.outcome,
+        penaltyBps: report.penaltyBps,
+        evidenceHash: report.evidenceHash,
+        observedAt: report.observedAt,
         expiresAt: report.expiresAt,
         riskScore: report.riskScore,
-        conditions: report.conditions,
+        findings: report.findings,
         reasoning: report.reasoning,
         model: report.model,
       }).sort(([a], [b]) => (a < b ? -1 : 1)),
