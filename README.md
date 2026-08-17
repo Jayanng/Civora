@@ -1,261 +1,132 @@
 # Civora
-**Autonomous Agent-Attested Settlement for Real-World Assets on BOT Chain**
+**Autonomous Agents. Real Assets. On-Chain Trust.**
 
-Tagline: Autonomous Agents. Real Assets. On-Chain Trust.
+Civora is an agent-operated sustainability-linked RWA protocol on BOT Chain Mainnet. Specialized Underwriter, Compliance Monitor, and Settlement agents register, evaluate, monitor, and settle green assets under explicit on-chain permissions.
 
----
+## Primary Green Deployment
 
-## 0. Live on BOT Chain Mainnet (677)
-
-Everything below is **deployed, verified, and running** on BOT Chain Mainnet — this is not a testnet demo.
-
-- Frontend: `pnpm dev` in `apps/web` (wallet-gated; auto-switches to chain 677)
-- Explorer: https://scan.botchain.ai
+- Network: BOT Chain Mainnet, chain ID `677`
 - RPC: `https://rpc.botchain.ai`
-
-### Deployed contracts (verified)
+- Explorer: `https://scan.botchain.ai`
+- Treasury: `0x25df058A6BF583542E69DB26cA0646C7F30B1567`
 
 | Contract | Address |
 |---|---|
-| AgentIdentity (ERC-721 + URIStorage) | `0x5442B5c06d1D4c3165273465d62f04e2bA093d19` |
-| AgentFactory (one tx: identity + wallet) | `0xcAF2ADA8743b7f9DA0A96EBb6fB98F76F8810cd8` |
-| AttestationRegistry | `0x5D68b1275cb7EB3d6b5b9c09A16241276E959F46` |
-| PermissionEngine | `0x88C8FB477A0685c198285bBcAC756B7F67629bc5` |
-| InvoiceRegistry | `0xB321a3FAAf9e7C5644f0db9a7753Ef4B9F51b03C` |
-| Reputation | `0xE6b144Cb3B14Cb3deA46F9c5c910376C8467B8F9` |
-| SettlementVault (95/3/1/1 split) | `0xA35ca76D1CB392CED9D08108083CF4e97371967B` |
-| Civora (orchestrator) | `0x33E800223ae882dfFA26871d283287E6A06DD7d9` |
+| AgentIdentity | `0x9D59Ad33e1BF4F85695245B7ab14F1E613Ff36D2` |
+| AgentFactory | `0xcd447F7eB818c4c9C88c89D4Ea73B6B3Ee207b30` |
+| CredentialRegistry | `0x077C7700c8FAaa6B9b79edac356D52Ea42356Cd0` |
+| GreenPermissionEngine | `0xbE063c28DC9ae7Aa3512c7Be4De24003d6B74b10` |
+| GreenAssetRegistry | `0x2b282A37C33903aa7846804f2eaEB0F6dE08FCe8` |
+| Reputation | `0xD0b54BC0492af7c5D1A2C53120981B2c53647CBe` |
+| SettlementAndPenaltyVault | `0xCd6B48E2E31970397d382ac1B9D148a3b3f87DF4` |
+| Civora facade | `0x9Db3420Ce7AF793a0759B3b2DEd1C08D2CADE7a4` |
 
-Deployer: `0x71708D8171F0Af75b0184861906B3678f7337E50` · Treasury: `0x25df058A6BF583542E69DB26cA0646C7F30B1567`
+## Product Loop
 
-### The loop, proven on-chain
+1. **Issue** a Sustainability-Linked Bond or Green Receivable with principal, coupon, maturity, target hash, document hash, and assigned agents.
+2. **Fund** the asset with principal plus coupon in native BOT.
+3. **Underwrite** with a real GMI DeepSeek-V4-Flash decision. The approved principal/coupon becomes a scoped settlement permission.
+4. **Monitor** with a second real GMI agent. It commits `TargetMet` or `TargetMissed` plus evidence hash and penalty basis points.
+5. **Settle** principal 100% to the holder. Fees apply only to the live coupon: Holder 94%, Protocol 3%, Underwriter 1%, Monitor 1%, Settlement 1%.
+6. **Apply a coupon haircut** when the sustainability target is missed. The haircut goes 100% to the protocol treasury; principal is never slashed.
+7. **Reputate agents** only after successful permissioned settlement: Underwriter +1, Monitor +2, Settlement +1.
+8. **Block unauthorized actions** with a real `PermissionDenied()` transaction.
 
-1. **Register + fund** — invoice #1 (0.05 BOT) escrowed in the vault: `0x1d5c011b…feff` → `0xfc4aab33…ea8e`
-2. **AI underwrite** — DeepSeek-V4-Flash agent issued verdict; committed as attestation with hash-locked report: `0x1f798bacec…2124` (decision: approve, 0.05 BOT, expires 2026-08-19)
-3. **Settle** — 95% payee / 3% protocol / 1% underwriter / 1% settlement agent, reputation +1/+2: `0xc972763d…1a8c`
-4. **Drain attempt** — blocked on-chain with decoded `PermissionDenied()`: `0x5f76df88…09b7` (status Failed)
+## AI Is the Policy
 
-Full client-side activity timeline (from transaction receipts) lives at `/app/activity` — note the public RPC bans `eth_getLogs`, so the app indexes receipts itself.
+Civora does not use AI for copywriting. The AI output becomes the on-chain control surface:
 
----
-
-## 1. Positioning (Infrastructure, Not an App)
-
-Civora is the **trust and settlement layer for Real-World Assets on BOT Chain**.
-
-It gives every RWA project a production-ready stack for AI agent identity, verifiable attestation, scoped permissions, and autonomous settlement. Invoices are the first demonstration, but the Trust Layer is designed to support **any asset class**: DePIN compute nodes, trade finance, real estate, carbon credits, and more.
-
----
-
-## 2. Core Problem & Solution
-
-**Problem:** AI agents on BOT Chain currently lack a clean, production-ready way to prove identity, hold limited permissions, issue verifiable claims about assets, and settle real value under those constraints.
-
-**Solution:** Civora provides:
-1. An on-chain Agent Identity + Attestation + Permission system
-2. A complete, working RWA settlement flow (Invoice-focused) where agents perform the core work and receive revenue
-
-The result is a single, tight, demoable business loop that judges can complete in under 90–120 seconds.
-
----
-
-## 3. Narrowed Feature Set (Must-Have Only)
-
-### Agent Trust Layer
-- Create specialized agents (Underwriter Agent and Settlement Agent)
-- Each agent receives an on-chain identity (ERC-721 based, aligned with ERC-8004 patterns that BOT Chain has referenced)
-- Dedicated Agent Wallet (smart-contract wallet pattern)
-- Issue and store Verifiable Credentials / Attestations about an asset
-- Scoped on-chain permissions (value limits, allowed actions, time bounds)
-- Permission enforcement (invalid actions are blocked)
-- Basic on-chain reputation that updates after successful settlement
-
-### RWA Settlement Loop (Invoice focus)
-- Register an Invoice as a Real-World Asset (amount, due date, counterparty, document hash)
-- Agent issues an attestation / underwriting credential
-- Permissions are applied
-- Settlement executes
-- A clear portion of fees/revenue is sent to the Agent Wallet
-- Full activity log with direct links to https://scan.botchain.ai
-
-### Infrastructure
-- Live on BOT Chain Mainnet (Chain ID 677, RPC https://rpc.botchain.ai)
-- Wallet connection with network enforcement
-- Verified contracts
-- Clean public website + interactive demo
-- GitHub repository with clear README
-
-Everything else (complex multi-agent AI reasoning, multiple asset types, advanced monitoring, fancy chat interfaces, etc.) is deliberately removed to protect Product Completion score.
-
----
-
-## 4. Demo Flow (90–120 seconds)
-
-1. Land on public website → Connect wallet (auto-switches to BOT Mainnet 677)
-2. Create two agents (Underwriter + Settlement) → Identity + Agent Wallet created on-chain
-3. Register a new Invoice (simple form: amount, due date, counterparty, document hash)
-4. Click “Let Agent Attest / Underwrite”
-5. Watch the Underwriter Agent issue an on-chain attestation + set scoped permissions
-6. Trigger Settlement → Payment executes → Portion of value is sent to the Settlement Agent’s wallet
-7. Attempt an unauthorized action → Permission is blocked on-chain
-8. View reputation update + full transaction history on the BOT Explorer
-
----
-
-## 5. Pages & Layout (Simplified & Focused)
-
-### Landing Page
-- Strong headline + short explanation
-- Clear “Launch App” button
-- “Built for BOT Chain’s AI Agent infrastructure” messaging (no false Launchpad claims)
-- Live counters (Agents created, Invoices settled, Value processed)
-- Links to GitHub, Explorer, and the real Research Series #06 article
-
-### Dashboard (after connect)
-- Summary cards: Active Agents | Registered Invoices | Total Settled | Agent Reputation
-- Two primary actions only: “Create Agent” and “Register Invoice”
-
-### Agents Page
-- List of agents with identity address, wallet balance, reputation, and permission status
-- Create Agent form
-- Simple detail view (credentials, permissions, activity)
-
-### Assets / Invoices Page
-- List of registered invoices
-- Register Invoice form
-- Detail view showing attestation, assigned agents, settlement history, and current permissions
-
-### Activity Page
-- Chronological feed of all on-chain events with Explorer links
-
----
-
-## 6. Technical Architecture
-
-- Network: BOT Chain Mainnet only (Chain ID 677, RPC https://rpc.botchain.ai, Explorer https://scan.botchain.ai)
-- Frontend: Next.js + TypeScript + Tailwind + wagmi/viem
-- Contracts (Solidity) — 7 core + Reputation:
-  - AgentIdentity (ERC-721 + URIStorage, aligned with ERC-8004 Identity)
-  - AgentWallet (smart-contract wallet, ERC-1271)
-  - AgentFactory (one tx: identity + wallet)
-  - AttestationRegistry (underwriting commitments)
-  - PermissionEngine (value / selector / time bounds)
-  - InvoiceRegistry
-  - SettlementVault (native BOT escrow + 95/3/1/1 split)
-  - Reputation (8th — score updates after successful settlement)
-- All contracts deployed and verified on mainnet
-- Events for every critical step so the Activity feed and Explorer links work cleanly
-
----
-
-## 7. Build Status
-
-Execution source of truth: `BUILD_PLAN.md` (10 gated phases — all gates green, committed to `main`).
-
-| Phase | Work | Status |
-|-------|------|--------|
-| 0 | Scaffold Next.js + Foundry, tokens, wagmi 677 | ✅ |
-| 1 | Contracts + Foundry tests (7 core + Reputation) | ✅ |
-| 2 | Deploy + verify on mainnet 677 | ✅ |
-| 3 | Wallet, create agents, dashboard reads | ✅ |
-| 4 | Register + fund invoice (document **hash only**, no IPFS) | ✅ |
-| 5 | Real GMI underwriter + on-chain attest | ✅ |
-| 6 | Settle, 95/3/1/1 fees, reputation | ✅ |
-| 7 | Unauthorized drain revert | ✅ |
-| 8 | Activity feed, landing, polish | ✅ |
-| 9 | README, 90s demo video, submission | 🔄 |
-
-**Rule:** Do not move forward until the previous phase is fully working. User-facing demo must be on BOT Chain Mainnet (677).
-
----
-
-## 8. Run Locally
-
-Prereqs: Node 24+, pnpm, Foundry (for contracts), a wallet with a little BOT on chain 677.
-
-```bash
-# frontend
-cp .env.example apps/web/.env.local   # NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, NEXT_PUBLIC_CHAIN_ID=677
-cd apps/web && pnpm install && pnpm dev
-
-# contracts (tests)
-cd contracts && forge test
-
-# underwriting requires a GMI API key in root .env (GMI_API_KEY) —
-# the /api/underwrite route falls back to ../../.env at runtime
+```text
+GMI report -> CredentialRegistry -> PermissionEngine maxValue/selector/expiry -> Vault settlement
 ```
 
-`deployments/677.json` holds the live addresses; the frontend reads them from `apps/web/src/lib/civora.ts`.
+Underwrite reports use `civora.underwrite.v1`. Monitor reports use `civora.monitor.v1`. Canonical sorted-key JSON is stored by report hash, and the same hash is committed on-chain.
 
----
+## Agents
 
-## 9. Why This Wins
+- **Underwriter:** approves principal and caps eligible coupon.
+- **Compliance Monitor:** evaluates target evidence and sets `TargetMet` or `TargetMissed` with `penaltyBps`.
+- **Settlement:** executes the permissioned payout through the vault.
 
-- **RWA Track — Highest Priority:** BOT Chain has explicitly positioned RWA as its primary ecosystem direction. Civora is the most complete RWA settlement protocol on the chain.
-- **AI as Core Capability:** Agents aren’t chatbots or wrappers. They are the economic actors performing underwriting, attestation, and settlement. The AI–on-chain mechanism is deep and functional.
-- **Complete Business Loop:** This is not a prototype or a dashboard. It’s a working loop: Register → Attest → Enforce → Settle → Reputate.
-- **Reusable Infrastructure:** The Trust Layer is designed so other RWA projects can adopt it without rebuilding identity, permissions, or settlement. Like DevStation, this helps the entire ecosystem.
-- **Fully Mainnet:** Live on BOT Chain Mainnet. Verified contracts. Public frontend. Real transactions.
+Each agent has an ERC-721-style identity and dedicated AgentWallet. The implementation follows patterns BOT Chain has publicly referenced, including the identity, credential, permission, and reputation direction in Research Series #06.
 
----
+## Frontend
 
-## 10. Beyond Invoices: One Trust Layer, Every Asset Class
+The primary app sections are:
 
-The Civora Trust Layer is asset-type agnostic. Invoices are the first integration because they are:
-- Universally understood
-- Structured (amount, term, counterparty)
-- Repeatable (every invoice = identical workflow)
+- `/` — Civora sustainability-linked RWA landing page
+- `/demo` — wallet-free live proof view for primary asset #1
+- `/app` — live dashboard
+- `/app/agents` — three agent roles and wallets
+- `/app/assets` — issue, fund, underwrite, monitor, settle
+- `/app/activity` — receipt-indexed lifecycle timeline
 
-**DePIN Compute Nodes:**
-- Agent underwrites node capacity, issues credential: “Node X has 99.9% uptime + 100Mbps verified speed”
-- Permission scope: agent can suspend underperforming nodes, release payments on SLA proof
-- Settlement: requesters pay per compute-second, agent takes protocol fee
+The RPC does not support `eth_getLogs`, so the frontend indexes transaction receipts in local storage and links every known transaction directly to the BOT Explorer.
 
-**Trade Finance / Letters of Credit:**
-- Agent validates shipment documents, issues credential: “Shipment Y matches LC terms”
-- Permission scope: agent can release payment upon validation, flag discrepancies
-- Settlement: automated payment split between exporter, agent, protocol
+## Local Development
 
-**Real Estate / Property Tokens:**
-- Agent validates occupancy, rental income, maintenance records
-- Permission scope: agent can trigger rent distribution, flag lease violations
-- Settlement: automated yield distribution to token holders
+Prerequisites: Node 24+, pnpm, Foundry, a BOT Chain 677 wallet, and a GMI API key.
 
-**Carbon Credits:**
-- Agent verifies emissions data, issues credential: “Project Z sequestered X tons”
-- Permission scope: agent can mint credits, enforce retirement rules
-- Settlement: credit sales split between project, verifier, protocol
+```bash
+pnpm install
+pnpm --filter @civora/web dev
+```
 
-**What every asset type shares:**
-- Agent needs identity + wallet
-- Asset needs registration + metadata
-- Agent issues attestation/credential
-- Permissions are enforced on-chain
-- Settlement is automatic
-- Revenue flows to agent + protocol
+Required environment values are listed in `.env.example`:
 
-**The pitch to judges:** “We didn’t build an invoice app. We built the Rails for RWA on BOT Chain. Invoices are just the first route on the network.”
+```text
+GMI_API_KEY=
+GMI_MODEL=deepseek-ai/DeepSeek-V4-Flash
+GMI_BASE_URL=https://api.gmi-serving.com/v1
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+NEXT_PUBLIC_CHAIN_ID=677
+BLOB_READ_WRITE_TOKEN=
+```
 
----
+`BLOB_READ_WRITE_TOKEN` is required for persistent production reports. Local development falls back to `apps/web/data/reports`.
 
-## 11. References
+Contracts:
 
-- [BOT Chain Research Series #06: AI Agent Identity on Blockchain](https://medium.com/@BOTChain_ai/ai-agent-identity-on-blockchain-dids-credentials-and-permission-boundaries-3c35106154d3) — The official BOT Chain article that inspired the Trust Layer design.
-- [BOT Chain Developer Docs](https://dev-docs.botchain.ai/docs/Developers/quick-guide/)
-- [BOT Chain Mainnet Explorer](https://scan.botchain.ai)
+```bash
+cd contracts
+forge test
+```
 
----
+## Legacy Invoice Proof
 
-## 12. Roadmap
+The original invoice-first Civora deployment remains on BOT Chain as historical proof. It is preserved in `deployments/677.json.legacy` and remains verifiable:
 
-**Post-Hackathon:**
-- DePIN Compute Node integration
-- Trade Finance / Letter of Credit flow
-- Multi-agent collaboration (mesh attestation)
-- Governance for Trust Layer standards
+- Legacy register: `0x1d5c011be88c62e30634fa08e69c844bde450570ce202ff4b5c7af706ec1feff`
+- Legacy fund: `0xfc4aab33c69d8c550e80f0b5764dcb854aa859f749e7258a5aa32a142011ea8e`
+- Legacy underwrite/attest: `0x1f798bacec3c1b8f78e34725c8fd81e0243100ee643f6934a7925e8b15c12124`
+- Legacy settle: `0xc972763d2a6fd3e5bab68f43e3106c0b9cb7aec13444dd53bd4a962e6cc11a8c`
+- Legacy unauthorized drain: `0x5f76df884b4b04a4a8c28f50c5cac967dcfe15ff76645ce1e2b74a93509209b7`
+
+The green deployment is Civora's primary product. The invoice deployment is not deleted and is not the primary app path.
+
+## Compliance Boundary
+
+Civora proves controlled issuance, hash-locked agent decisions, permissioned settlement, transparent coupon economics, and auditable target outcomes. A document hash is not a legal opinion, proof of ownership, KYC/KYB, sanctions clearance, or verified emissions measurement.
+
+Production deployment requires legal asset documentation, regulated custody, investor eligibility, independent sustainability evidence, sanctions screening, and oracle/data-provider governance.
+
+## Roadmap
+
+- Multi-agent mesh attestation
+- DePIN compute and other asset adapters
+- Trade finance and letters of credit
+- Governance and dispute resolution
 - SDK for third-party RWA builders
 
----
+## BOT Chain Positioning
+
+Civora is designed for seamless future integration with BOT Chain's AI Agent infrastructure. It uses native BOT for escrow and settlement, verified contracts on chain 677, BOT Explorer proof, and reusable identity/credential/permission primitives for the ecosystem's RWA direction.
+
+## References
+
+- [BOT Chain Research Series #06](https://medium.com/@BOTChain_ai/ai-agent-identity-on-blockchain-dids-credentials-and-permission-boundaries-3c35106154d3)
+- [BOT Chain Developer Docs](https://dev-docs.botchain.ai/docs/Developers/quick-guide/)
+- [BOT Chain Mainnet Explorer](https://scan.botchain.ai)
 
 ## License
 

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { keccak256, toBytes } from "viem";
 import { putReport } from "@/lib/report-store";
 
@@ -36,7 +37,7 @@ function loadGmiConfig(): { key: string; model: string; baseUrl: string } {
     };
   }
   try {
-    const raw = readFileSync(new URL("../../../../.env", import.meta.url), "utf8");
+    const raw = readFileSync(path.resolve(process.cwd(), "../../.env"), "utf8");
     const get = (name: string) => {
       const m = raw.match(new RegExp(`^${name}=(.+)$`, "m"));
       return m ? m[1].trim().replace(/^["']|["']$/g, "") : undefined;
