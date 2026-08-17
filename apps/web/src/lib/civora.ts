@@ -49,12 +49,29 @@ export const vaultAbi = parseAbi([
   "function fund(uint256 invoiceId) external payable",
 ]);
 
+export const civoraAbi = parseAbi([
+  "function underwriteCommit(uint256 invoiceId, uint256 underwriterId, bytes32 reportHash, uint8 decision, uint256 approvedAmount, uint64 expiresAt, bytes32 modelId) external",
+]);
+
+export const attestationAbi = parseAbi([
+  "function attestations(uint256 invoiceId) external view returns (uint256 invoiceId, uint256 agentId, bytes32 reportHash, uint8 decision, uint256 approvedAmount, uint64 expiresAt, bytes32 modelId, uint64 issuedAt)",
+]);
+
+export const DECISION = {
+  Approve: 1,
+  Reject: 2,
+} as const;
+
 export const agentCreatedItem = parseAbiItem(
   "event AgentCreated(uint256 indexed agentId, address indexed owner, uint8 agentType, address wallet, string name)",
 );
 
 export const invoiceRegisteredItem = parseAbiItem(
   "event InvoiceRegistered(uint256 indexed invoiceId, address indexed payer, address indexed counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint256 underwriterId, uint256 settlementAgentId)",
+);
+
+export const attestedItem = parseAbiItem(
+  "event Attested(uint256 indexed invoiceId, uint256 indexed agentId, bytes32 reportHash, uint8 decision, uint256 approvedAmount, uint64 expiresAt, bytes32 modelId)",
 );
 
 export const INVOICE_STATE_NAMES = {

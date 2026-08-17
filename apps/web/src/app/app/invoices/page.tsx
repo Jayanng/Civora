@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState, useSyncExternalStore } from "react";
-import { formatEther, isAddress, keccak256, parseEther } from "viem";
+import { formatEther, isAddress, keccak256, parseEther, toBytes } from "viem";
 import {
   useAccount,
   useBalance,
@@ -15,12 +15,15 @@ import {
   AGENT_TYPE,
   INVOICE_STATE_NAMES,
   ADDRESSES,
+  attestationAbi,
+  civoraAbi,
   invoicesAbi,
   identityAbi,
   vaultAbi,
 } from "@/lib/civora";
 import { loadAgentIndex, subscribeAgentIndex } from "@/lib/agents";
 import {
+  decodeAttestedFromReceipt,
   decodeInvoiceRegisteredFromReceipt,
   loadInvoiceIndex,
   persistInvoice,
@@ -28,6 +31,29 @@ import {
   type IndexedInvoice,
 } from "@/lib/invoices";
 import { TxLink, truncateHash } from "@/components/TxLink";
+
+interface UnderwriteReport {
+  schema: string;
+  decision: "approve" | "reject";
+  approvedAmountWei: string;
+  expiresAt: number;
+  riskScore: number;
+  conditions: string[];
+  reasoning: string;
+  model: string;
+}
+
+interface UnderwriteRowData {
+  invoiceId: number;
+  amountWei: string;
+  dueDate: number;
+  counterparty: `0x${string}`;
+  documentHash: `0x${string}`;
+  payer: `0x${string}`;
+  underwriterId: number;
+  settlementAgentId: number;
+  reportHash?: `0x${string}`;
+}
 
 function AgentOption({ agentId, requiredType }: { agentId: number; requiredType: 1 | 2 }) {
   const type = useReadContract({
@@ -40,16 +66,31 @@ function AgentOption({ agentId, requiredType }: { agentId: number; requiredType:
   return <option value={agentId}>#{agentId}</option>;
 }
 
-function InvoiceRow({ invoiceId, registerTx, fundTx }: IndexedInvoice) {
+function InvoiceRow({
+  invoiceId,
+  registerTx,
+  fundTx,
+  attestTx,
+  reportHash,
+  onUnderwrite,
+}: IndexedInvoice & { onUnderwrite: (data: UnderwriteRowData) => void }) {
   const inv = useReadContract({
     address: ADDRESSES.invoices,
     abi: invoicesAbi,
     functionName: "invoices",
     args: [BigInt(invoiceId)],
   });
+  const att = useReadContract({
+    address: ADDRESSES.attestations,
+    abi: attestationAbi,
+    functionName: "attestations",
+    args: [BigInt(invoiceId)],
+  });
 
   const state = inv.data ? (inv.data[5] as number) : null;
   const stateName = state ? INVOICE_STATE_NAMES[state as 1 | 2 | 3 | 4 | 5] : null;
+  const hasAttestation = att.data && att.data[1] !== 0n;
+  const attestedDecision = hasAttestation ? Number(att.data![3]) : null;
 
   return (
     <tr className="border-t border-border">
@@ -80,8 +121,43 @@ function InvoiceRow({ invoiceId, registerTx, fundTx }: IndexedInvoice) {
       <td className="py-3 pr-4">
         <TxLink hash={registerTx} />
       </td>
-      <td className="py-3">
+      <td className="py-3 pr-4">
         {fundTx ? <TxLink hash={fundTx} /> : <span className="font-mono text-xs text-text-tertiary">—</span>}
+      </td>
+      <td className="py-3">
+        {attestTx ? (
+          <TxLink hash={attestTx} />
+        ) : state === 2 && inv.data && onUnderwrite ? (
+          <button
+            type="button"
+            onClick={() =>
+              onUnderwrite({
+                invoiceId,
+                amountWei: inv.data![2].toString(),
+                dueDate: Number(inv.data![3]),
+                counterparty: inv.data![1],
+                documentHash: inv.data![4],
+                payer: inv.data![0],
+                underwriterId: Number(inv.data![6]),
+                settlementAgentId: Number(inv.data![7]),
+                reportHash,
+              })
+            }
+            className="rounded-sm border border-accent px-2 py-1 font-grotesk text-xs font-medium text-accent hover:bg-accent hover:text-text-on-accent"
+          >
+            Underwrite
+          </button>
+        ) : hasAttestation && attestedDecision ? (
+          <span
+            className={`rounded-sm px-1.5 py-0.5 text-xs ${
+              attestedDecision === 1 ? "bg-success-bg text-success" : "bg-error-bg text-error"
+            }`}
+          >
+            {attestedDecision === 1 ? "APPROVED" : "REJECTED"}
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-text-tertiary">—</span>
+        )}
       </td>
     </tr>
   );
@@ -100,7 +176,14 @@ function InvoicesContent() {
   const [step, setStep] = useState<"details" | "agents" | "review" | "registered" | "funded">("details");
 
   const [amount, setAmount] = useState("0.05");
-  const [dueDate, setDueDate] = useState("");
+  const [nowTs] = useState(() => Math.floor(Date.now() / 1000));
+  const [dueDate, setDueDate] = useState(() => {
+    const t = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    t.setMinutes(0, 0, 0);
+    t.setHours(12);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T${pad(t.getHours())}:${pad(t.getMinutes())}`;
+  });
   const [counterparty, setCounterparty] = useState("");
   const [docHash, setDocHash] = useState<`0x${string}` | "">("");
   const [docName, setDocName] = useState<string | null>(null);
@@ -116,6 +199,11 @@ function InvoicesContent() {
     amountWei: bigint;
   } | null>(null);
 
+  const [uwInvoice, setUwInvoice] = useState<UnderwriteRowData | null>(null);
+  const [uwReport, setUwReport] = useState<{ reportHash: `0x${string}`; report: UnderwriteReport } | null>(null);
+  const [uwStatus, setUwStatus] = useState<"idle" | "running" | "ready" | "committing" | "done">("idle");
+  const [uwError, setUwError] = useState<string | null>(null);
+
   const { writeContractAsync } = useWriteContract();
   const vaultBalance = useBalance({ address: ADDRESSES.vault });
 
@@ -128,19 +216,19 @@ function InvoicesContent() {
     [agentIndex, underwriterId],
   );
 
+  const dueTs = useMemo(() => {
+    if (!dueDate) return 0n;
+    const ts = Math.floor(new Date(dueDate).getTime() / 1000);
+    return Number.isFinite(ts) && ts > 0 ? BigInt(ts) : 0n;
+  }, [dueDate]);
+
   const detailsValid = useMemo(() => {
     if (!amount || parseEther(amount) <= 0n) return false;
-    if (!dueDate) return false;
+    if (!dueTs || dueTs <= BigInt(nowTs) + 60n) return false;
     if (!counterparty || !isAddress(counterparty)) return false;
     if (!docHash) return false;
     return true;
-  }, [amount, dueDate, counterparty, docHash]);
-
-  const dueTs = useMemo(() => {
-    if (!dueDate) return 0n;
-    const [y, m, d] = dueDate.split("-").map(Number);
-    return BigInt(Math.floor(new Date(y, m - 1, d, 23, 59, 59).getTime() / 1000));
-  }, [dueDate]);
+  }, [amount, dueTs, counterparty, docHash, nowTs]);
 
   const onFile = async (file: File | null) => {
     setDocError(null);
@@ -238,6 +326,79 @@ function InvoicesContent() {
       : "Funding invoice…"
     : null;
 
+  const runUnderwrite = async (data: UnderwriteRowData) => {
+    setUwError(null);
+    setUwStatus("running");
+    setUwInvoice(data);
+    setUwReport(null);
+    try {
+      const res = await fetch("/api/underwrite", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          invoiceId: String(data.invoiceId),
+          amountWei: data.amountWei,
+          dueDate: data.dueDate,
+          counterparty: data.counterparty,
+          documentHash: data.documentHash,
+          payer: data.payer,
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? `underwriter HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as { reportHash: `0x${string}`; report: UnderwriteReport };
+      setUwReport(json);
+      setUwStatus("ready");
+    } catch (e) {
+      setUwError(e instanceof Error ? e.message : "Underwrite failed.");
+      setUwStatus("idle");
+    }
+  };
+
+  const commitUnderwrite = async () => {
+    setUwError(null);
+    if (!publicClient || !uwInvoice || !uwReport) return;
+    setUwStatus("committing");
+    try {
+      const modelId = keccak256(toBytes(uwReport.report.model));
+      const hash = await writeContractAsync({
+        address: ADDRESSES.civora,
+        abi: civoraAbi,
+        functionName: "underwriteCommit",
+        args: [
+          BigInt(uwInvoice.invoiceId),
+          BigInt(uwInvoice.underwriterId),
+          uwReport.reportHash,
+          uwReport.report.decision === "approve" ? 1 : 2,
+          BigInt(uwReport.report.approvedAmountWei),
+          BigInt(uwReport.report.expiresAt),
+          modelId,
+        ],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      if (receipt.status === "reverted") {
+        setUwError("Transaction reverted on-chain.");
+        return;
+      }
+      const decoded = decodeAttestedFromReceipt(receipt);
+      const current = loadInvoiceIndex().find((i) => i.invoiceId === uwInvoice.invoiceId);
+      if (current) {
+        persistInvoice({
+          ...current,
+          attestTx: receipt.transactionHash,
+          reportHash: decoded?.reportHash ?? uwReport.reportHash,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["counts"] });
+      setUwStatus("done");
+    } catch (e) {
+      setUwError(e instanceof Error ? e.message : "Commit failed.");
+      setUwStatus("ready");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -276,10 +437,11 @@ function InvoicesContent() {
                       />
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="text-xs uppercase tracking-widest text-text-secondary">Due date</span>
+                      <span className="text-xs uppercase tracking-widest text-text-secondary">Due date + time</span>
                       <input
-                        type="date"
+                        type="datetime-local"
                         value={dueDate}
+                        min={new Date((nowTs + 60) * 1000).toISOString().slice(0, 16)}
                         onChange={(e) => setDueDate(e.target.value)}
                         className="h-10 rounded-none border border-border-strong bg-bg px-3 font-plex text-sm text-text-primary focus:border-accent focus:outline-none"
                       />
@@ -399,7 +561,7 @@ function InvoicesContent() {
                     </div>
                     <div className="flex justify-between gap-4 border-b border-border pb-1">
                       <dt className="text-text-secondary">Due</dt>
-                      <dd className="text-text-primary">{dueDate}</dd>
+                      <dd className="text-text-primary">{dueDate} ({dueTs.toString()})</dd>
                     </div>
                     <div className="flex justify-between gap-4 border-b border-border pb-1">
                       <dt className="text-text-secondary">Counterparty</dt>
@@ -516,23 +678,135 @@ function InvoicesContent() {
                 <th className="py-2 pr-4 font-medium">State</th>
                 <th className="py-2 pr-4 font-medium">Document</th>
                 <th className="py-2 pr-4 font-medium">Register tx</th>
-                <th className="py-2 font-medium">Fund tx</th>
+                <th className="py-2 pr-4 font-medium">Fund tx</th>
+                <th className="py-2 font-medium">Attestation</th>
               </tr>
             </thead>
             <tbody>
               {invoiceIndex.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center font-mono text-sm text-text-tertiary">
+                  <td colSpan={7} className="py-8 text-center font-mono text-sm text-text-tertiary">
                     No invoices registered yet.
                   </td>
                 </tr>
               ) : (
-                invoiceIndex.map((i) => <InvoiceRow key={i.invoiceId} invoiceId={i.invoiceId} registerTx={i.registerTx} fundTx={i.fundTx} />)
+                invoiceIndex.map((i) => (
+                  <InvoiceRow
+                    key={i.invoiceId}
+                    invoiceId={i.invoiceId}
+                    registerTx={i.registerTx}
+                    fundTx={i.fundTx}
+                    attestTx={i.attestTx}
+                    reportHash={i.reportHash}
+                    onUnderwrite={(data) => void runUnderwrite(data)}
+                  />
+                ))
               )}
             </tbody>
           </table>
         </div>
       </section>
+
+      {uwInvoice ? (
+        <section className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4">
+          <header className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-grotesk text-sm font-medium">Underwriting · invoice #{uwInvoice.invoiceId}</h2>
+              <p className="mt-1 font-mono text-xs text-text-secondary">
+                {uwInvoice.amountWei ? `${formatEther(BigInt(uwInvoice.amountWei))} BOT` : ""} · underwriter #
+                {uwInvoice.underwriterId} · settlement #{uwInvoice.settlementAgentId}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setUwInvoice(null);
+                setUwReport(null);
+                setUwStatus("idle");
+                setUwError(null);
+              }}
+              className="h-8 rounded-none border border-border-strong px-3 font-grotesk text-xs text-text-secondary hover:bg-bg"
+            >
+              Close
+            </button>
+          </header>
+
+          {uwStatus === "running" ? (
+            <p className="font-mono text-xs text-text-secondary">Underwriter is reviewing the invoice…</p>
+          ) : null}
+
+          {uwError ? <p className="break-all font-mono text-xs text-error">{uwError}</p> : null}
+
+          {uwStatus === "idle" && !uwReport ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void runUnderwrite(uwInvoice)}
+                className="h-10 rounded-none bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover"
+              >
+                Run AI Underwriter
+              </button>
+            </div>
+          ) : null}
+
+          {uwReport ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <span
+                  className={`rounded-sm px-2 py-1 text-xs font-medium ${
+                    uwReport.report.decision === "approve"
+                      ? "bg-success-bg text-success"
+                      : "bg-error-bg text-error"
+                  }`}
+                >
+                  {uwReport.report.decision === "approve" ? "APPROVE" : "REJECT"}
+                </span>
+                <span className="font-mono text-xs text-text-secondary">
+                  risk {uwReport.report.riskScore}/100 · approved{" "}
+                  {formatEther(BigInt(uwReport.report.approvedAmountWei))} BOT · expires{" "}
+                  {new Date(uwReport.report.expiresAt * 1000).toLocaleString()} · {uwReport.report.model}
+                </span>
+              </div>
+              <p className="font-plex text-sm text-text-primary">{uwReport.report.reasoning}</p>
+              {uwReport.report.conditions.length > 0 ? (
+                <ul className="flex list-disc flex-col gap-1 pl-5 font-mono text-xs text-text-secondary">
+                  {uwReport.report.conditions.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-text-secondary">
+                <span>report {truncateHash(uwReport.reportHash, 10, 6)}</span>
+                <a
+                  href={`/api/reports/${uwReport.reportHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent underline hover:text-accent-hover"
+                >
+                  fetch JSON
+                </a>
+              </div>
+              {uwStatus === "ready" || uwStatus === "committing" ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={uwStatus !== "ready"}
+                    onClick={() => void commitUnderwrite()}
+                    className="h-10 rounded-none bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover disabled:opacity-60"
+                  >
+                    {uwStatus === "committing" ? "Committing…" : "Commit attestation (1 tx)"}
+                  </button>
+                </div>
+              ) : null}
+              {uwStatus === "done" ? (
+                <p className="font-mono text-xs text-text-secondary">
+                  Attestation committed. Invoice is now <span className="text-success">Attested</span>.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

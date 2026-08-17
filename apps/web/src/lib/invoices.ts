@@ -1,6 +1,6 @@
 import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
-import { ADDRESSES, invoiceRegisteredItem } from "./civora";
+import { ADDRESSES, attestedItem, invoiceRegisteredItem } from "./civora";
 
 const INDEX_KEY = "civora.invoices.v1";
 
@@ -8,6 +8,8 @@ export interface IndexedInvoice {
   invoiceId: number;
   registerTx: `0x${string}`;
   fundTx?: `0x${string}`;
+  attestTx?: `0x${string}`;
+  reportHash?: `0x${string}`;
 }
 
 function readIndexFromStorage(): IndexedInvoice[] {
@@ -98,6 +100,43 @@ export function decodeInvoiceRegisteredFromReceipt(
         documentHash: args.documentHash,
         underwriterId: args.underwriterId,
         settlementAgentId: args.settlementAgentId,
+      };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+export interface DecodedAttested {
+  invoiceId: number;
+  agentId: number;
+  reportHash: `0x${string}`;
+  decision: number;
+  approvedAmount: bigint;
+  expiresAt: bigint;
+  modelId: `0x${string}`;
+}
+
+export function decodeAttestedFromReceipt(receipt: TransactionReceipt): DecodedAttested | null {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== ADDRESSES.attestations.toLowerCase()) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: [attestedItem],
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName !== "Attested") continue;
+      const args = decoded.args;
+      return {
+        invoiceId: Number(args.invoiceId),
+        agentId: Number(args.agentId),
+        reportHash: args.reportHash,
+        decision: args.decision,
+        approvedAmount: args.approvedAmount,
+        expiresAt: args.expiresAt,
+        modelId: args.modelId,
       };
     } catch {
       continue;
