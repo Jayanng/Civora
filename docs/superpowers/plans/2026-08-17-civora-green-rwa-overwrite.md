@@ -405,7 +405,6 @@ struct GreenAsset {
     AssetType assetType;
     uint256 principalWei;
     uint256 couponWei;
-    uint16 couponBps;
     bytes32 targetHash;
     bytes32 documentHash;
     uint64 maturity;
@@ -415,6 +414,8 @@ struct GreenAsset {
     AssetState state;
 }
 ```
+
+**Note (audit deviation):** `couponBps` is removed from the on-chain struct because a 13-field public getter exceeds Solidity stack limits. `couponWei` remains the source of truth; `couponBps` is computed off-chain for display only. `register` takes no `couponBps` argument.
 
 Validations:
 - holder != 0 && holder != msg.sender
@@ -489,6 +490,10 @@ function test_settleTargetMissedHaircutToTreasury() public {
 
 function test_settleBeforeMonitorReverts() public { /* NotMonitored or InvalidState */ }
 
+function test_settleRejectsMismatchedCredentialAgent() public {
+    // submit underwrite from a different underwriter than the asset's assigned id -> settle reverts
+}
+
 function test_emergencyDrainPermissionDenied() public { /* status fail path */ }
 
 function test_reputationOnlyOnSettle() public {
@@ -509,7 +514,9 @@ Caller auth for settle: issuer OR settlement agent wallet OR settlement agent ow
 Require:
 - state Monitored
 - underwrite Approve, unexpired
+- underwrite credential `agentId == asset.underwriterId` (rejects cross-asset credentials)
 - monitor present, unexpired
+- monitor credential `agentId == asset.monitorId` (rejects cross-asset monitor credentials)
 - `permissions.check(assetId, settlementAgentId, this.settle.selector, principalWei + couponWei)`
 - approvedPrincipalWei == principalWei (primary path)
 
