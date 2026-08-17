@@ -22,6 +22,9 @@
 - Never commit secrets (`PRIVATE_KEY`, `GMI_API_KEY`, `BLOB_READ_WRITE_TOKEN`).
 - ASCII in new source and docs unless an existing file requires otherwise.
 - Keep full scope: three agents, underwrite, monitor, haircut settle, drain demo, five pages, public site.
+- `AgentType.None` must remain ordinal `0`; `Underwriter=1`, `ComplianceMonitor=2`, `Settlement=3`. Any existing code that casts `AgentType` to `uint8` must not break.
+- Underwrite rejected principal+coupon must be zero; underwrite rejected means the full escrow is refundable by the issuer.
+- Monitor `TargetMissed` requires `penaltyBps` in `1..10000`; `TargetMet` requires `penaltyBps == 0`.
 
 ---
 
@@ -137,10 +140,17 @@ contract CivoraGreenTest is Test {
         assertEq(uint8(identity.agentTypeOf(sa)), uint8(AgentType.Settlement));
     }
 
-    function test_rejectNoneAgentType() public {
+function test_rejectNoneAgentType() public {
         vm.prank(alice);
         vm.expectRevert(InvalidAgentType.selector);
         factory.createAgent(AgentType.None, "bad");
+    }
+
+    function test_agentTypeOrdinalsPreserveNoneFirst() public pure {
+        assertEq(uint8(AgentType.None), 0);
+        assertEq(uint8(AgentType.Underwriter), 1);
+        assertEq(uint8(AgentType.ComplianceMonitor), 2);
+        assertEq(uint8(AgentType.Settlement), 3);
     }
 }
 ```
@@ -322,6 +332,8 @@ git commit -m "feat(contracts): CredentialRegistry for underwrite and monitor at
 function test_grantSettleSelectorAfterApprove() public { /* ... */ }
 function test_checkWithoutGrantRevertsPermissionDenied() public { /* ... */ }
 function test_nonSettlementAgentCannotReceiveGrant() public { /* ... */ }
+function test_civoraCanCreateGrant() public { /* facade caller is accepted */ }
+function test_underwriterControllerCanCreateGrant() public { /* attesting underwriter controller is accepted */ }
 ```
 
 - [ ] **Step 2: Run — expect fail**
@@ -482,6 +494,10 @@ function test_emergencyDrainPermissionDenied() public { /* status fail path */ }
 function test_reputationOnlyOnSettle() public {
     // scores 0 before; after settle uw=1 mon=2 sa=1
 }
+
+function test_rejectUnderwriteRefundsFullEscrow() public { /* issuer receives principal + coupon */ }
+function test_expiredFundedAssetRefundsIssuer() public { /* issuer refund after maturity */ }
+function test_expiredUnderwrittenAssetWithoutMonitorRefundsIssuer() public { /* issuer refund after underwrite expiry */ }
 ```
 
 - [ ] **Step 2: Run — fail**
