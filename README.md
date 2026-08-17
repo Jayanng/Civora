@@ -5,6 +5,40 @@ Tagline: Autonomous Agents. Real Assets. On-Chain Trust.
 
 ---
 
+## 0. Live on BOT Chain Mainnet (677)
+
+Everything below is **deployed, verified, and running** on BOT Chain Mainnet — this is not a testnet demo.
+
+- Frontend: `pnpm dev` in `apps/web` (wallet-gated; auto-switches to chain 677)
+- Explorer: https://scan.botchain.ai
+- RPC: `https://rpc.botchain.ai`
+
+### Deployed contracts (verified)
+
+| Contract | Address |
+|---|---|
+| AgentIdentity (ERC-721 + URIStorage) | `0x5442B5c06d1D4c3165273465d62f04e2bA093d19` |
+| AgentFactory (one tx: identity + wallet) | `0xcAF2ADA8743b7f9DA0A96EBb6fB98F76F8810cd8` |
+| AttestationRegistry | `0x5D68b1275cb7EB3d6b5b9c09A16241276E959F46` |
+| PermissionEngine | `0x88C8FB477A0685c198285bBcAC756B7F67629bc5` |
+| InvoiceRegistry | `0xB321a3FAAf9e7C5644f0db9a7753Ef4B9F51b03C` |
+| Reputation | `0xE6b144Cb3B14Cb3deA46F9c5c910376C8467B8F9` |
+| SettlementVault (95/3/1/1 split) | `0xA35ca76D1CB392CED9D08108083CF4e97371967B` |
+| Civora (orchestrator) | `0x33E800223ae882dfFA26871d283287E6A06DD7d9` |
+
+Deployer: `0x71708D8171F0Af75b0184861906B3678f7337E50` · Treasury: `0x25df058A6BF583542E69DB26cA0646C7F30B1567`
+
+### The loop, proven on-chain
+
+1. **Register + fund** — invoice #1 (0.05 BOT) escrowed in the vault: `0x1d5c011b…feff` → `0xfc4aab33…ea8e`
+2. **AI underwrite** — DeepSeek-V4-Flash agent issued verdict; committed as attestation with hash-locked report: `0x1f798bacec…2124` (decision: approve, 0.05 BOT, expires 2026-08-19)
+3. **Settle** — 95% payee / 3% protocol / 1% underwriter / 1% settlement agent, reputation +1/+2: `0xc972763d…1a8c`
+4. **Drain attempt** — blocked on-chain with decoded `PermissionDenied()`: `0x5f76df88…09b7` (status Failed)
+
+Full client-side activity timeline (from transaction receipts) lives at `/app/activity` — note the public RPC bans `eth_getLogs`, so the app indexes receipts itself.
+
+---
+
 ## 1. Positioning (Infrastructure, Not an App)
 
 Civora is the **trust and settlement layer for Real-World Assets on BOT Chain**.
@@ -114,28 +148,48 @@ Everything else (complex multi-agent AI reasoning, multiple asset types, advance
 
 ---
 
-## 7. Build Plan
+## 7. Build Status
 
-Execution source of truth: `BUILD_PLAN.md` (10 gated phases). Do not start the next phase until the current gate is green.
+Execution source of truth: `BUILD_PLAN.md` (10 gated phases — all gates green, committed to `main`).
 
-| Phase | Work |
-|-------|------|
-| 0 | Scaffold Next.js + Foundry, tokens, wagmi 677 |
-| 1 | Contracts + Foundry tests (7 core + Reputation) |
-| 2 | Deploy + verify on mainnet 677 |
-| 3 | Wallet, create agents, dashboard reads |
-| 4 | Register + fund invoice (document **hash only**, no IPFS) |
-| 5 | Real GMI underwriter + on-chain attest |
-| 6 | Settle, 95/3/1/1 fees, reputation |
-| 7 | Unauthorized drain revert |
-| 8 | Activity feed, landing, polish |
-| 9 | README, 90s demo video, submission |
+| Phase | Work | Status |
+|-------|------|--------|
+| 0 | Scaffold Next.js + Foundry, tokens, wagmi 677 | ✅ |
+| 1 | Contracts + Foundry tests (7 core + Reputation) | ✅ |
+| 2 | Deploy + verify on mainnet 677 | ✅ |
+| 3 | Wallet, create agents, dashboard reads | ✅ |
+| 4 | Register + fund invoice (document **hash only**, no IPFS) | ✅ |
+| 5 | Real GMI underwriter + on-chain attest | ✅ |
+| 6 | Settle, 95/3/1/1 fees, reputation | ✅ |
+| 7 | Unauthorized drain revert | ✅ |
+| 8 | Activity feed, landing, polish | ✅ |
+| 9 | README, 90s demo video, submission | 🔄 |
 
 **Rule:** Do not move forward until the previous phase is fully working. User-facing demo must be on BOT Chain Mainnet (677).
 
 ---
 
-## 8. Why This Wins
+## 8. Run Locally
+
+Prereqs: Node 24+, pnpm, Foundry (for contracts), a wallet with a little BOT on chain 677.
+
+```bash
+# frontend
+cp .env.example apps/web/.env.local   # NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, NEXT_PUBLIC_CHAIN_ID=677
+cd apps/web && pnpm install && pnpm dev
+
+# contracts (tests)
+cd contracts && forge test
+
+# underwriting requires a GMI API key in root .env (GMI_API_KEY) —
+# the /api/underwrite route falls back to ../../.env at runtime
+```
+
+`deployments/677.json` holds the live addresses; the frontend reads them from `apps/web/src/lib/civora.ts`.
+
+---
+
+## 9. Why This Wins
 
 - **RWA Track — Highest Priority:** BOT Chain has explicitly positioned RWA as its primary ecosystem direction. Civora is the most complete RWA settlement protocol on the chain.
 - **AI as Core Capability:** Agents aren’t chatbots or wrappers. They are the economic actors performing underwriting, attestation, and settlement. The AI–on-chain mechanism is deep and functional.
@@ -145,7 +199,7 @@ Execution source of truth: `BUILD_PLAN.md` (10 gated phases). Do not start the n
 
 ---
 
-## 9. Beyond Invoices: One Trust Layer, Every Asset Class
+## 10. Beyond Invoices: One Trust Layer, Every Asset Class
 
 The Civora Trust Layer is asset-type agnostic. Invoices are the first integration because they are:
 - Universally understood
@@ -184,7 +238,7 @@ The Civora Trust Layer is asset-type agnostic. Invoices are the first integratio
 
 ---
 
-## 10. References
+## 11. References
 
 - [BOT Chain Research Series #06: AI Agent Identity on Blockchain](https://medium.com/@BOTChain_ai/ai-agent-identity-on-blockchain-dids-credentials-and-permission-boundaries-3c35106154d3) — The official BOT Chain article that inspired the Trust Layer design.
 - [BOT Chain Developer Docs](https://dev-docs.botchain.ai/docs/Developers/quick-guide/)
@@ -192,7 +246,7 @@ The Civora Trust Layer is asset-type agnostic. Invoices are the first integratio
 
 ---
 
-## 11. Roadmap
+## 12. Roadmap
 
 **Post-Hackathon:**
 - DePIN Compute Node integration
