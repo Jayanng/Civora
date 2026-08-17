@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AgentIdentity} from "../src/AgentIdentity.sol";
 import {AgentFactory} from "../src/AgentFactory.sol";
 import {AgentType, UnderwriteDecision, MonitorOutcome} from "../src/Types.sol";
-import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired} from "../src/Errors.sol";
+import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired, GrantRevoked} from "../src/Errors.sol";
 import {CredentialRegistry} from "../src/CredentialRegistry.sol";
 import {GreenPermissionEngine} from "../src/GreenPermissionEngine.sol";
 import {GreenAssetRegistry} from "../src/GreenAssetRegistry.sol";
@@ -168,6 +168,28 @@ contract CivoraGreenTest is Test {
         _submitApprove();
         vm.prank(alice);
         vm.expectRevert(PermissionDenied.selector);
+        permissions.check(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether);
+    }
+
+    function test_rejectUnderwriteBlocksGrant() public {
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            1, uwId, REPORT, UnderwriteDecision.Reject, 0, 0,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+        vm.prank(alice);
+        vm.expectRevert(PermissionDenied.selector);
+        permissions.grant(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether, uint64(block.timestamp + 7 days));
+    }
+
+    function test_revokeBlocksCheck() public {
+        _submitApprove();
+        vm.prank(alice);
+        uint256 grantId = permissions.grant(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether, uint64(block.timestamp + 7 days));
+        vm.prank(alice);
+        permissions.revoke(grantId);
+        vm.prank(alice);
+        vm.expectRevert(GrantRevoked.selector);
         permissions.check(1, saId, bytes4(keccak256("settle(uint256)")), 1.1 ether);
     }
 

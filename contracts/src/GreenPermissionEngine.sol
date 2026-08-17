@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {AgentIdentity} from "./AgentIdentity.sol";
 import {CredentialRegistry} from "./CredentialRegistry.sol";
-import {AgentType} from "./Types.sol";
+import {AgentType, UnderwriteDecision} from "./Types.sol";
 import {
     NotController,
     NotSettlement,
@@ -70,7 +70,8 @@ contract GreenPermissionEngine {
         if (expiresAt <= block.timestamp) revert Expired();
         if (!credentialRegistry.hasUnderwrite(assetId)) revert PermissionDenied();
 
-        (, uint256 underwriterId,,,,,,,) = credentialRegistry.underwrites(assetId);
+        (, uint256 underwriterId,, UnderwriteDecision decision,,,,,) = credentialRegistry.underwrites(assetId);
+        if (decision != UnderwriteDecision.Approve) revert PermissionDenied();
         address underwriterController = identity.ownerOf(underwriterId);
         if (msg.sender != civora && msg.sender != underwriterController) revert NotController();
 

@@ -16,7 +16,8 @@ import {
     NotController,
     InvalidHolder,
     InvalidTargetHash,
-    InvalidMaturity
+    InvalidMaturity,
+    InvalidAssetType
 } from "./Errors.sol";
 
 /// @title GreenAssetRegistry
@@ -109,7 +110,7 @@ contract GreenAssetRegistry {
         if (targetHash == bytes32(0)) revert InvalidTargetHash();
         if (documentHash == bytes32(0)) revert InvalidDocumentHash();
         if (maturity <= block.timestamp) revert InvalidMaturity();
-        if (assetType != AssetType.SustainabilityLinkedBond && assetType != AssetType.GreenReceivable) revert InvalidAgentType();
+        if (assetType != AssetType.SustainabilityLinkedBond && assetType != AssetType.GreenReceivable) revert InvalidAssetType();
         if (identity.agentTypeOf(underwriterId) != AgentType.Underwriter) revert InvalidAgentType();
         if (identity.agentTypeOf(monitorId) != AgentType.ComplianceMonitor) revert InvalidAgentType();
         if (identity.agentTypeOf(settlementAgentId) != AgentType.Settlement) revert InvalidAgentType();

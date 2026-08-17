@@ -15,7 +15,8 @@ import {
     InvalidState,
     ZeroAddress,
     AlreadySet,
-    NotAdmin
+    NotAdmin,
+    InvalidReportHash
 } from "./Errors.sol";
 
 /// @title CredentialRegistry
@@ -104,7 +105,7 @@ contract CredentialRegistry {
         if (identity.agentTypeOf(agentId) != AgentType.Underwriter) revert NotUnderwriter();
         address controller = identity.ownerOf(agentId);
         if (msg.sender != controller && msg.sender != civora) revert NotController();
-        if (reportHash == bytes32(0)) revert InvalidApprovedAmount();
+        if (reportHash == bytes32(0)) revert InvalidReportHash();
         if (expiresAt <= block.timestamp + 10 minutes) revert InvalidExpiry();
 
         if (decision == UnderwriteDecision.Reject) {
@@ -146,8 +147,8 @@ contract CredentialRegistry {
         if (identity.agentTypeOf(agentId) != AgentType.ComplianceMonitor) revert NotMonitor();
         address controller = identity.ownerOf(agentId);
         if (msg.sender != controller && msg.sender != civora) revert NotController();
-        if (reportHash == bytes32(0)) revert InvalidApprovedAmount();
-        if (evidenceHash == bytes32(0)) revert InvalidApprovedAmount();
+        if (reportHash == bytes32(0)) revert InvalidReportHash();
+        if (evidenceHash == bytes32(0)) revert InvalidReportHash();
         if (observedAt > block.timestamp) revert InvalidExpiry();
         if (expiresAt <= block.timestamp + 10 minutes) revert InvalidExpiry();
 

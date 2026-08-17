@@ -39,4 +39,6 @@ error InvalidMonitorOutcome();
 error InvalidCoupon();
 error AlreadyCredentialed();
 error NotMonitored();
+error InvalidReportHash();
+error InvalidAssetType();
 error TransferFailed(address to, uint256 amount);
