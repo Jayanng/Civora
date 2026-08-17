@@ -5,12 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {AgentIdentity} from "../src/AgentIdentity.sol";
 import {AgentFactory} from "../src/AgentFactory.sol";
 import {AgentType, UnderwriteDecision, MonitorOutcome} from "../src/Types.sol";
-import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired, GrantRevoked} from "../src/Errors.sol";
+import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired, GrantRevoked, InvalidFundingAmount, NotPayer, NothingToRefund, AlreadySettled, UnauthorizedCaller, NotMonitored, InvalidState} from "../src/Errors.sol";
 import {CredentialRegistry} from "../src/CredentialRegistry.sol";
 import {GreenPermissionEngine} from "../src/GreenPermissionEngine.sol";
 import {GreenAssetRegistry} from "../src/GreenAssetRegistry.sol";
 import {AssetType, AssetState} from "../src/Types.sol";
 import {InvalidHolder, InvalidTargetHash, InvalidMaturity} from "../src/Errors.sol";
+import {SettlementAndPenaltyVault} from "../src/SettlementAndPenaltyVault.sol";
+import {Reputation} from "../src/Reputation.sol";
 
 contract CivoraGreenTest is Test {
     AgentIdentity internal identity;
@@ -18,6 +20,9 @@ contract CivoraGreenTest is Test {
     CredentialRegistry internal credentials;
     GreenPermissionEngine internal permissions;
     GreenAssetRegistry internal assets;
+    SettlementAndPenaltyVault internal vault;
+    Reputation internal reputation;
+    address internal treasury = makeAddr("treasury");
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
 
@@ -46,6 +51,13 @@ contract CivoraGreenTest is Test {
         permissions = new GreenPermissionEngine(identity);
         permissions.setCredentialRegistry(credentials);
         assets = new GreenAssetRegistry(identity);
+        reputation = new Reputation();
+        vault = new SettlementAndPenaltyVault(identity, assets, credentials, permissions, reputation, treasury);
+        assets.setVault(address(vault));
+        assets.setAttestor(address(this));
+        reputation.setVault(address(vault));
+
+        vm.deal(alice, 10 ether);
     }
 
     function _registerAsset(uint256 p, uint256 c) internal returns (uint256 assetId) {
@@ -235,5 +247,214 @@ contract CivoraGreenTest is Test {
             bob, AssetType.SustainabilityLinkedBond, 1 ether, 0.1 ether,
             TARGET, DOC, uint64(block.timestamp), uwId, monId, saId
         );
+    }
+
+    function _fundAsset(uint256 id, uint256 p, uint256 c) internal {
+        vm.prank(alice);
+        vault.fund{value: p + c}(id);
+    }
+
+    function _driveToMonitored(uint256 assetId, uint256 p, uint256 c, MonitorOutcome outcome, uint16 penaltyBps) internal {
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            assetId, uwId, REPORT, UnderwriteDecision.Approve, p, c,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+        vm.prank(alice);
+        permissions.grant(assetId, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
+        assets.markUnderwritten(assetId);
+        assets.markMonitored(assetId);
+        vm.prank(alice);
+        credentials.submitMonitor(
+            assetId, monId, REPORT, outcome, penaltyBps, EVIDENCE,
+            uint64(block.timestamp), uint64(block.timestamp + 7 days), MODEL
+        );
+    }
+
+    function test_fundRequiresPrincipalPlusCoupon() public {
+        uint256 id = _registerAsset(1 ether, 0.1 ether);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(InvalidFundingAmount.selector, 0.05 ether, 1.1 ether));
+        vault.fund{value: 0.05 ether}(id);
+    }
+
+    function test_settleTargetMetSplitsCouponOnly() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        _driveToMonitored(id, p, c, MonitorOutcome.TargetMet, 0);
+
+        uint256 bobBefore = bob.balance;
+        uint256 treBefore = treasury.balance;
+        uint256 uwBefore = identity.walletOf(uwId).balance;
+        uint256 monBefore = identity.walletOf(monId).balance;
+        uint256 saBefore = identity.walletOf(saId).balance;
+
+        vm.prank(alice);
+        vault.settle(id);
+
+        uint256 protocol = c * 300 / 10_000;
+        uint256 uw = c * 100 / 10_000;
+        uint256 mon = c * 100 / 10_000;
+        uint256 sa = c * 100 / 10_000;
+        uint256 holderCoupon = c - protocol - uw - mon - sa;
+
+        assertEq(bob.balance - bobBefore, p + holderCoupon);
+        assertEq(treasury.balance - treBefore, protocol);
+        assertEq(identity.walletOf(uwId).balance - uwBefore, uw);
+        assertEq(identity.walletOf(monId).balance - monBefore, mon);
+        assertEq(identity.walletOf(saId).balance - saBefore, sa);
+        (, , , , , , , , , , , AssetState state) = assets.assets(id);
+        assertEq(uint8(state), uint8(AssetState.Settled));
+    }
+
+    function test_settleTargetMissedHaircutToTreasury() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        _driveToMonitored(id, p, c, MonitorOutcome.TargetMissed, 2000);
+
+        uint256 bobBefore = bob.balance;
+        uint256 treBefore = treasury.balance;
+
+        vm.prank(alice);
+        vault.settle(id);
+
+        uint256 haircut = c * 2000 / 10_000;
+        uint256 live = c - haircut;
+        uint256 protocol = live * 300 / 10_000;
+        uint256 uw = live * 100 / 10_000;
+        uint256 mon = live * 100 / 10_000;
+        uint256 sa = live * 100 / 10_000;
+        uint256 holderCoupon = live - protocol - uw - mon - sa;
+
+        assertEq(bob.balance - bobBefore, p + holderCoupon);
+        assertEq(treasury.balance - treBefore, protocol + haircut);
+    }
+
+    function test_settleBeforeMonitorReverts() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            id, uwId, REPORT, UnderwriteDecision.Approve, p, c,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+        vm.prank(alice);
+        permissions.grant(id, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
+        assets.markUnderwritten(id);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(InvalidState.selector, 3, 4));
+        vault.settle(id);
+    }
+
+    function test_settleRejectsMismatchedCredentialAgent() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        // submit underwrite from a DIFFERENT underwriter than the asset's assigned id
+        vm.startPrank(alice);
+        (uint256 otherUw,) = factory.createAgent(AgentType.Underwriter, "UW-02");
+        vm.stopPrank();
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            id, otherUw, REPORT, UnderwriteDecision.Approve, p, c,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+        vm.prank(alice);
+        permissions.grant(id, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
+        assets.markUnderwritten(id);
+        assets.markMonitored(id);
+        vm.prank(alice);
+        credentials.submitMonitor(
+            id, monId, REPORT, MonitorOutcome.TargetMet, 0, EVIDENCE,
+            uint64(block.timestamp), uint64(block.timestamp + 7 days), MODEL
+        );
+        vm.prank(alice);
+        vm.expectRevert(PermissionDenied.selector);
+        vault.settle(id);
+    }
+
+    function test_emergencyDrainPermissionDenied() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        vm.expectRevert(PermissionDenied.selector);
+        vault.emergencyDrain(id);
+    }
+
+    function test_reputationOnlyOnSettle() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        _driveToMonitored(id, p, c, MonitorOutcome.TargetMet, 0);
+
+        assertEq(reputation.score(uwId), 0);
+        assertEq(reputation.score(monId), 0);
+        assertEq(reputation.score(saId), 0);
+
+        vm.prank(alice);
+        vault.settle(id);
+
+        assertEq(reputation.score(uwId), 1);
+        assertEq(reputation.score(monId), 2);
+        assertEq(reputation.score(saId), 1);
+    }
+
+    function test_rejectUnderwriteRefundsFullEscrow() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            id, uwId, REPORT, UnderwriteDecision.Reject, 0, 0,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+        uint256 aliceAfterFund = alice.balance;
+        vm.prank(alice);
+        vault.refund(id);
+        assertEq(alice.balance, aliceAfterFund + p + c);
+    }
+
+    function test_expiredFundedAssetRefundsIssuer() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        uint256 aliceAfterFund = alice.balance;
+        vm.warp(block.timestamp + 31 days);
+        vm.prank(alice);
+        vault.refund(id);
+        assertEq(alice.balance, aliceAfterFund + p + c);
+    }
+
+    function test_expiredUnderwrittenAssetWithoutMonitorRefundsIssuer() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c);
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        credentials.submitUnderwrite(
+            id, uwId, REPORT, UnderwriteDecision.Approve, p, c,
+            uint64(block.timestamp + 7 days), MODEL
+        );
+        vm.prank(alice);
+        permissions.grant(id, saId, vault.settle.selector, p + c, uint64(block.timestamp + 7 days));
+        assets.markUnderwritten(id);
+        uint256 aliceAfterFund = alice.balance;
+        vm.warp(block.timestamp + 8 days);
+        vm.prank(alice);
+        vault.refund(id);
+        assertEq(alice.balance, aliceAfterFund + p + c);
     }
 }
