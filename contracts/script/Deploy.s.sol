@@ -4,12 +4,12 @@ pragma solidity ^0.8.24;
 import {Script, console2} from "forge-std/Script.sol";
 import {AgentIdentity} from "../src/AgentIdentity.sol";
 import {AgentFactory} from "../src/AgentFactory.sol";
-import {AttestationRegistry} from "../src/AttestationRegistry.sol";
-import {PermissionEngine} from "../src/PermissionEngine.sol";
-import {InvoiceRegistry} from "../src/InvoiceRegistry.sol";
+import {CredentialRegistry} from "../src/CredentialRegistry.sol";
+import {GreenPermissionEngine} from "../src/GreenPermissionEngine.sol";
+import {GreenAssetRegistry} from "../src/GreenAssetRegistry.sol";
 import {Reputation} from "../src/Reputation.sol";
-import {SettlementVault} from "../src/SettlementVault.sol";
-import {Civora} from "../src/Civora.sol";
+import {SettlementAndPenaltyVault} from "../src/SettlementAndPenaltyVault.sol";
+import {CivoraGreen} from "../src/CivoraGreen.sol";
 
 contract Deploy is Script {
     function run() external {
@@ -25,23 +25,22 @@ contract Deploy is Script {
         AgentFactory factory = new AgentFactory(identity);
         identity.setFactory(address(factory));
 
-        AttestationRegistry attestations = new AttestationRegistry(identity);
-        PermissionEngine permissions = new PermissionEngine(identity);
-        InvoiceRegistry invoices = new InvoiceRegistry(identity);
+        CredentialRegistry credentials = new CredentialRegistry(identity);
+        GreenPermissionEngine permissions = new GreenPermissionEngine(identity);
+        GreenAssetRegistry assets = new GreenAssetRegistry(identity);
         Reputation reputation = new Reputation();
 
-        SettlementVault vault = new SettlementVault(
-            identity, invoices, attestations, permissions, reputation, treasury
+        SettlementAndPenaltyVault vault = new SettlementAndPenaltyVault(
+            identity, assets, credentials, permissions, reputation, treasury
         );
 
-        Civora civora = new Civora(identity, factory, invoices, attestations, permissions, vault, reputation);
+        CivoraGreen civora = new CivoraGreen(identity, factory, assets, credentials, permissions, vault, reputation);
 
-        invoices.setVault(address(vault));
-        invoices.setAttestor(address(civora));
+        assets.setVault(address(vault));
+        assets.setAttestor(address(civora));
         reputation.setVault(address(vault));
-        attestations.setInvoiceRegistry(address(invoices));
-        attestations.setCivora(address(civora));
-        permissions.setAttestationRegistry(address(attestations));
+        credentials.setCivora(address(civora));
+        permissions.setCredentialRegistry(credentials);
         permissions.setCivora(address(civora));
 
         vm.stopBroadcast();
@@ -50,11 +49,11 @@ contract Deploy is Script {
         console2.log("treasury", treasury);
         console2.log("AgentIdentity", address(identity));
         console2.log("AgentFactory", address(factory));
-        console2.log("AttestationRegistry", address(attestations));
-        console2.log("PermissionEngine", address(permissions));
-        console2.log("InvoiceRegistry", address(invoices));
+        console2.log("CredentialRegistry", address(credentials));
+        console2.log("GreenPermissionEngine", address(permissions));
+        console2.log("GreenAssetRegistry", address(assets));
         console2.log("Reputation", address(reputation));
-        console2.log("SettlementVault", address(vault));
-        console2.log("Civora", address(civora));
+        console2.log("SettlementAndPenaltyVault", address(vault));
+        console2.log("CivoraGreen", address(civora));
     }
 }
