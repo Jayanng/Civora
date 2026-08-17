@@ -1,39 +1,38 @@
 import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
-import { ADDRESSES, attestedItem, invoiceRegisteredItem, settledItem } from "./civora";
+import { ADDRESSES, assetRegisteredItem, fundedItem, settledItem } from "./civora";
 
-const INDEX_KEY = "civora.invoices.v1";
+const INDEX_KEY = "civora.assets.v1";
 
-export interface IndexedInvoice {
-  invoiceId: number;
+export interface IndexedAsset {
+  assetId: number;
   registerTx: `0x${string}`;
   fundTx?: `0x${string}`;
-  attestTx?: `0x${string}`;
-  reportHash?: `0x${string}`;
+  underwriteTx?: `0x${string}`;
+  underwriteReportHash?: `0x${string}`;
+  monitorTx?: `0x${string}`;
+  monitorReportHash?: `0x${string}`;
   settleTx?: `0x${string}`;
 }
 
-function readIndexFromStorage(): IndexedInvoice[] {
+function readIndexFromStorage(): IndexedAsset[] {
   try {
     const raw = window.localStorage.getItem(INDEX_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
-      (a): a is IndexedInvoice =>
-        typeof a === "object" &&
-        a !== null &&
-        typeof a.invoiceId === "number" &&
-        typeof a.registerTx === "string",
+      (a): a is IndexedAsset =>
+        typeof a === "object" && a !== null && typeof a.assetId === "number" && typeof a.registerTx === "string",
     );
   } catch {
     return [];
   }
 }
 
-let cachedIndex: IndexedInvoice[] | null = null;
+let cachedIndex: IndexedAsset[] | null = null;
 
-export function loadInvoiceIndex(): IndexedInvoice[] {
+export function loadAssetIndex(): IndexedAsset[] {
   if (typeof window === "undefined") return [];
   if (cachedIndex === null) cachedIndex = readIndexFromStorage();
   return cachedIndex;
@@ -43,63 +42,69 @@ function invalidateIndex(): void {
   cachedIndex = null;
 }
 
-export function persistInvoice(invoice: IndexedInvoice): void {
+export function persistAsset(asset: IndexedAsset): void {
   if (typeof window === "undefined") return;
-  const current = loadInvoiceIndex();
-  const next = current.some((a) => a.invoiceId === invoice.invoiceId)
-    ? current.map((a) => (a.invoiceId === invoice.invoiceId ? invoice : a))
-    : [...current, invoice];
+  const current = loadAssetIndex();
+  const next = current.some((a) => a.assetId === asset.assetId)
+    ? current.map((a) => (a.assetId === asset.assetId ? asset : a))
+    : [...current, asset];
   window.localStorage.setItem(INDEX_KEY, JSON.stringify(next));
   invalidateIndex();
-  window.dispatchEvent(new Event("civora:invoices-changed"));
+  window.dispatchEvent(new Event("civora:assets-changed"));
 }
 
-export function subscribeInvoiceIndex(onChange: () => void): () => void {
+export function subscribeAssetIndex(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const handler = () => {
     invalidateIndex();
     onChange();
   };
-  window.addEventListener("civora:invoices-changed", handler);
+  window.addEventListener("civora:assets-changed", handler);
   window.addEventListener("storage", handler);
   return () => {
-    window.removeEventListener("civora:invoices-changed", handler);
+    window.removeEventListener("civora:assets-changed", handler);
     window.removeEventListener("storage", handler);
   };
 }
 
-export interface DecodedInvoiceRegistered {
-  invoiceId: number;
-  payer: `0x${string}`;
-  counterparty: `0x${string}`;
-  amount: bigint;
-  dueDate: bigint;
+export interface DecodedAssetRegistered {
+  assetId: number;
+  issuer: `0x${string}`;
+  holder: `0x${string}`;
+  assetType: number;
+  principalWei: bigint;
+  couponWei: bigint;
+  targetHash: `0x${string}`;
   documentHash: `0x${string}`;
+  maturity: bigint;
   underwriterId: bigint;
+  monitorId: bigint;
   settlementAgentId: bigint;
 }
 
-export function decodeInvoiceRegisteredFromReceipt(
-  receipt: TransactionReceipt,
-): DecodedInvoiceRegistered | null {
+export function decodeAssetRegisteredFromReceipt(receipt: TransactionReceipt): DecodedAssetRegistered | null {
   for (const log of receipt.logs) {
-    if (log.address.toLowerCase() !== ADDRESSES.invoices.toLowerCase()) continue;
+    if (log.address.toLowerCase() !== ADDRESSES.assets.toLowerCase()) continue;
     try {
       const decoded = decodeEventLog({
-        abi: [invoiceRegisteredItem],
+        abi: [assetRegisteredItem],
         data: log.data,
         topics: log.topics,
       });
-      if (decoded.eventName !== "InvoiceRegistered") continue;
+      if (decoded.eventName !== "AssetRegistered") continue;
       const args = decoded.args;
       return {
-        invoiceId: Number(args.invoiceId),
-        payer: args.payer,
-        counterparty: args.counterparty,
-        amount: args.amount,
-        dueDate: args.dueDate,
+        assetId: Number(args.assetId),
+        issuer: args.issuer,
+        holder: args.holder,
+        assetType: Number(args.assetType),
+        principalWei: args.principalWei,
+        couponWei: args.couponWei,
+        targetHash: args.targetHash,
         documentHash: args.documentHash,
+        maturity: args.maturity,
         underwriterId: args.underwriterId,
+        monitorId: args.monitorId,
         settlementAgentId: args.settlementAgentId,
       };
     } catch {
@@ -109,35 +114,27 @@ export function decodeInvoiceRegisteredFromReceipt(
   return null;
 }
 
-export interface DecodedAttested {
-  invoiceId: number;
-  agentId: number;
-  reportHash: `0x${string}`;
-  decision: number;
-  approvedAmount: bigint;
-  expiresAt: bigint;
-  modelId: `0x${string}`;
+export interface DecodedFunded {
+  assetId: number;
+  issuer: `0x${string}`;
+  amount: bigint;
 }
 
-export function decodeAttestedFromReceipt(receipt: TransactionReceipt): DecodedAttested | null {
+export function decodeFundedFromReceipt(receipt: TransactionReceipt): DecodedFunded | null {
   for (const log of receipt.logs) {
-    if (log.address.toLowerCase() !== ADDRESSES.attestations.toLowerCase()) continue;
+    if (log.address.toLowerCase() !== ADDRESSES.vault.toLowerCase()) continue;
     try {
       const decoded = decodeEventLog({
-        abi: [attestedItem],
+        abi: [fundedItem],
         data: log.data,
         topics: log.topics,
       });
-      if (decoded.eventName !== "Attested") continue;
+      if (decoded.eventName !== "Funded") continue;
       const args = decoded.args;
       return {
-        invoiceId: Number(args.invoiceId),
-        agentId: Number(args.agentId),
-        reportHash: args.reportHash,
-        decision: args.decision,
-        approvedAmount: args.approvedAmount,
-        expiresAt: args.expiresAt,
-        modelId: args.modelId,
+        assetId: Number(args.assetId),
+        issuer: args.issuer,
+        amount: args.amount,
       };
     } catch {
       continue;
