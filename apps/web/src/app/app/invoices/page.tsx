@@ -25,6 +25,7 @@ import { loadAgentIndex, subscribeAgentIndex } from "@/lib/agents";
 import {
   decodeAttestedFromReceipt,
   decodeInvoiceRegisteredFromReceipt,
+  decodeSettledFromReceipt,
   loadInvoiceIndex,
   persistInvoice,
   subscribeInvoiceIndex,
@@ -72,8 +73,13 @@ function InvoiceRow({
   fundTx,
   attestTx,
   reportHash,
+  settleTx,
   onUnderwrite,
-}: IndexedInvoice & { onUnderwrite: (data: UnderwriteRowData) => void }) {
+  onSettle,
+}: IndexedInvoice & {
+  onUnderwrite: (data: UnderwriteRowData) => void;
+  onSettle: (invoiceId: number) => void;
+}) {
   const inv = useReadContract({
     address: ADDRESSES.invoices,
     abi: invoicesAbi,
@@ -159,6 +165,23 @@ function InvoiceRow({
           <span className="font-mono text-xs text-text-tertiary">—</span>
         )}
       </td>
+      <td className="py-3">
+        {settleTx ? (
+          <TxLink hash={settleTx} />
+        ) : state === 3 && onSettle ? (
+          <button
+            type="button"
+            onClick={() => onSettle(invoiceId)}
+            className="rounded-sm border border-accent px-2 py-1 font-grotesk text-xs font-medium text-accent hover:bg-accent hover:text-text-on-accent"
+          >
+            Settle
+          </button>
+        ) : state === 4 ? (
+          <span className="rounded-sm bg-success-bg px-1.5 py-0.5 text-xs text-success">SETTLED</span>
+        ) : (
+          <span className="font-mono text-xs text-text-tertiary">—</span>
+        )}
+      </td>
     </tr>
   );
 }
@@ -203,6 +226,18 @@ function InvoicesContent() {
   const [uwReport, setUwReport] = useState<{ reportHash: `0x${string}`; report: UnderwriteReport } | null>(null);
   const [uwStatus, setUwStatus] = useState<"idle" | "running" | "ready" | "committing" | "done">("idle");
   const [uwError, setUwError] = useState<string | null>(null);
+
+  const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [settleResult, setSettleResult] = useState<{
+    invoiceId: number;
+    payeeAmt: bigint;
+    protocolAmt: bigint;
+    uwAmt: bigint;
+    saAmt: bigint;
+    refundAmt: bigint;
+    txHash: `0x${string}`;
+  } | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
 
   const { writeContractAsync } = useWriteContract();
   const vaultBalance = useBalance({ address: ADDRESSES.vault });
@@ -396,6 +431,38 @@ function InvoicesContent() {
     } catch (e) {
       setUwError(e instanceof Error ? e.message : "Commit failed.");
       setUwStatus("ready");
+    }
+  };
+
+  const settle = async (invoiceId: number) => {
+    setSettleError(null);
+    if (!publicClient) return;
+    setSettlingId(invoiceId);
+    try {
+      const hash = await writeContractAsync({
+        address: ADDRESSES.vault,
+        abi: vaultAbi,
+        functionName: "settle",
+        args: [BigInt(invoiceId)],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      if (receipt.status === "reverted") {
+        setSettleError("Transaction reverted on-chain.");
+        return;
+      }
+      const decoded = decodeSettledFromReceipt(receipt);
+      const current = loadInvoiceIndex().find((i) => i.invoiceId === invoiceId);
+      if (current) {
+        persistInvoice({ ...current, settleTx: receipt.transactionHash });
+      }
+      if (decoded) {
+        setSettleResult({ ...decoded, txHash: receipt.transactionHash });
+      }
+      queryClient.invalidateQueries({ queryKey: ["counts"] });
+    } catch (e) {
+      setSettleError(e instanceof Error ? e.message : "Settle failed.");
+    } finally {
+      setSettlingId(null);
     }
   };
 
@@ -679,13 +746,14 @@ function InvoicesContent() {
                 <th className="py-2 pr-4 font-medium">Document</th>
                 <th className="py-2 pr-4 font-medium">Register tx</th>
                 <th className="py-2 pr-4 font-medium">Fund tx</th>
-                <th className="py-2 font-medium">Attestation</th>
+                <th className="py-2 pr-4 font-medium">Attestation</th>
+                <th className="py-2 font-medium">Settlement</th>
               </tr>
             </thead>
             <tbody>
               {invoiceIndex.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center font-mono text-sm text-text-tertiary">
+                  <td colSpan={8} className="py-8 text-center font-mono text-sm text-text-tertiary">
                     No invoices registered yet.
                   </td>
                 </tr>
@@ -698,7 +766,9 @@ function InvoicesContent() {
                     fundTx={i.fundTx}
                     attestTx={i.attestTx}
                     reportHash={i.reportHash}
+                    settleTx={i.settleTx}
                     onUnderwrite={(data) => void runUnderwrite(data)}
+                    onSettle={(id) => void settle(id)}
                   />
                 ))
               )}
@@ -706,6 +776,56 @@ function InvoicesContent() {
           </table>
         </div>
       </section>
+
+      {settleError ? <p className="break-all font-mono text-xs text-error">{settleError}</p> : null}
+      {settlingId !== null ? (
+        <p className="font-mono text-xs text-text-secondary">Settling invoice #{settlingId}…</p>
+      ) : null}
+      {settleResult ? (
+        <section className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4">
+          <h2 className="font-grotesk text-sm font-medium">Invoice #{settleResult.invoiceId} settled</h2>
+          <div className="grid grid-cols-1 gap-2 font-mono text-xs sm:grid-cols-2">
+            <div className="flex justify-between gap-4 border-b border-border pb-1">
+              <dt className="text-text-secondary">Payee (95%)</dt>
+              <dd className="text-text-primary">{formatEther(settleResult.payeeAmt)} BOT</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-b border-border pb-1">
+              <dt className="text-text-secondary">Protocol (3%)</dt>
+              <dd className="text-text-primary">{formatEther(settleResult.protocolAmt)} BOT</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-b border-border pb-1">
+              <dt className="text-text-secondary">Underwriter (1%)</dt>
+              <dd className="text-text-primary">{formatEther(settleResult.uwAmt)} BOT</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-b border-border pb-1">
+              <dt className="text-text-secondary">Settlement (1%)</dt>
+              <dd className="text-text-primary">{formatEther(settleResult.saAmt)} BOT</dd>
+            </div>
+            {settleResult.refundAmt > 0n ? (
+              <div className="flex justify-between gap-4 border-b border-border pb-1">
+                <dt className="text-text-secondary">Refund to payer</dt>
+                <dd className="text-text-primary">{formatEther(settleResult.refundAmt)} BOT</dd>
+              </div>
+            ) : null}
+          </div>
+          <p className="font-mono text-xs">
+            Settle tx: <TxLink hash={settleResult.txHash} />
+          </p>
+          <p className="font-mono text-xs text-text-secondary">
+            Agent wallets now hold their 1% cut — check the Agents page. Reputation: underwriter +1, settlement
+            agent +2.
+          </p>
+          <div>
+            <button
+              type="button"
+              onClick={() => setSettleResult(null)}
+              className="h-8 rounded-none border border-border-strong px-3 font-grotesk text-xs text-text-secondary hover:bg-bg"
+            >
+              Dismiss
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {uwInvoice ? (
         <section className="flex flex-col gap-3 rounded-md border border-border bg-surface p-4">

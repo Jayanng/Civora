@@ -1,6 +1,6 @@
 import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
-import { ADDRESSES, attestedItem, invoiceRegisteredItem } from "./civora";
+import { ADDRESSES, attestedItem, invoiceRegisteredItem, settledItem } from "./civora";
 
 const INDEX_KEY = "civora.invoices.v1";
 
@@ -10,6 +10,7 @@ export interface IndexedInvoice {
   fundTx?: `0x${string}`;
   attestTx?: `0x${string}`;
   reportHash?: `0x${string}`;
+  settleTx?: `0x${string}`;
 }
 
 function readIndexFromStorage(): IndexedInvoice[] {
@@ -137,6 +138,41 @@ export function decodeAttestedFromReceipt(receipt: TransactionReceipt): DecodedA
         approvedAmount: args.approvedAmount,
         expiresAt: args.expiresAt,
         modelId: args.modelId,
+      };
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+export interface DecodedSettled {
+  invoiceId: number;
+  payeeAmt: bigint;
+  protocolAmt: bigint;
+  uwAmt: bigint;
+  saAmt: bigint;
+  refundAmt: bigint;
+}
+
+export function decodeSettledFromReceipt(receipt: TransactionReceipt): DecodedSettled | null {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== ADDRESSES.vault.toLowerCase()) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: [settledItem],
+        data: log.data,
+        topics: log.topics,
+      });
+      if (decoded.eventName !== "Settled") continue;
+      const args = decoded.args;
+      return {
+        invoiceId: Number(args.invoiceId),
+        payeeAmt: args.payeeAmt,
+        protocolAmt: args.protocolAmt,
+        uwAmt: args.uwAmt,
+        saAmt: args.saAmt,
+        refundAmt: args.refundAmt,
       };
     } catch {
       continue;

@@ -47,6 +47,7 @@ export const invoicesAbi = parseAbi([
 
 export const vaultAbi = parseAbi([
   "function fund(uint256 invoiceId) external payable",
+  "function settle(uint256 invoiceId) external",
 ]);
 
 export const civoraAbi = parseAbi([
@@ -72,6 +73,10 @@ export const invoiceRegisteredItem = parseAbiItem(
 
 export const attestedItem = parseAbiItem(
   "event Attested(uint256 indexed invoiceId, uint256 indexed agentId, bytes32 reportHash, uint8 decision, uint256 approvedAmount, uint64 expiresAt, bytes32 modelId)",
+);
+
+export const settledItem = parseAbiItem(
+  "event Settled(uint256 indexed invoiceId, uint256 payeeAmt, uint256 protocolAmt, uint256 uwAmt, uint256 saAmt, uint256 refundAmt)",
 );
 
 export const INVOICE_STATE_NAMES = {
