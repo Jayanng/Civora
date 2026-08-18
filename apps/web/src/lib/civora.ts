@@ -95,6 +95,7 @@ export const vaultAbi = parseAbi([
   "function settle(uint256 assetId) external",
   "function refund(uint256 assetId) external",
   "function emergencyDrain(uint256 assetId) external",
+  "function treasury() external view returns (address)",
   "error PermissionDenied()",
 ]);
 

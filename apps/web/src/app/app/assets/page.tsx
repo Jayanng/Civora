@@ -3,8 +3,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState, useSyncExternalStore } from "react";
-import { formatEther, isAddress, keccak256, parseEther, toBytes } from "viem";
-import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { formatEther, isAddress, keccak256, parseEther, toBytes, zeroAddress } from "viem";
+import { useAccount, usePublicClient, useReadContract, useWriteContract } from "wagmi";
 import {
   ADDRESSES,
   ASSET_STATE_NAMES,
@@ -12,6 +12,7 @@ import {
   ASSET_TYPE_NAMES,
   assetsAbi,
   civoraAbi,
+  identityAbi,
   vaultAbi,
 } from "@/lib/civora";
 import {
@@ -219,7 +220,8 @@ function AssetsPageContent() {
   const { writeContractAsync } = useWriteContract();
   const assetIndex = useSyncExternalStore(subscribeAssetIndex, loadAssetIndex, loadAssetIndex);
   const agentIndex = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
-  const [nowTs] = useState(() => Math.floor(Date.now() / 1000));
+  const nowMs = useNow(1000);
+  const nowTs = Math.floor(nowMs / 1000);
   const [filter, setFilter] = useState(0);
   const [formOpen, setFormOpen] = useState(() => searchParams.get("new") === "1");
   const [assetType, setAssetType] = useState<1 | 2>(ASSET_TYPE.SustainabilityLinkedBond);
@@ -264,7 +266,20 @@ function AssetsPageContent() {
   const [drainStatus, setDrainStatus] = useState<string | null>(null);
   const [drainHash, setDrainHash] = useState<`0x${string}` | null>(null);
 
-  const minMaturity = new Date((nowTs + 60) * 1000).toISOString().slice(0, 16);
+  // 1 hour minimum — gives the tx plenty of time to mine before maturity.
+  const minMaturity = new Date((nowTs + 3600) * 1000).toISOString().slice(0, 16);
+
+  const treasury = useReadContract({ address: ADDRESSES.vault, abi: vaultAbi, functionName: "treasury" });
+
+  const holderState = useMemo(() => {
+    if (!holder) return { tone: "empty" as const, hint: "Payout goes to this address at settlement — it must be someone other than you." };
+    if (!isAddress(holder)) return { tone: "error" as const, hint: "Not a valid address." };
+    if (holder.toLowerCase() === zeroAddress) return { tone: "error" as const, hint: "Zero address is not allowed." };
+    if (address && holder.toLowerCase() === address.toLowerCase()) {
+      return { tone: "error" as const, hint: "Holder cannot be the issuer — pick a different address, e.g. the treasury." };
+    }
+    return { tone: "ok" as const, hint: "Valid holder — principal + coupon payout at settlement." };
+  }, [holder, address]);
 
   const assetIds = assetIndex.map((a) => a.assetId).join(",");
   const agentIds = agentIndex.map((a) => a.agentId).join(",");
@@ -305,6 +320,8 @@ function AssetsPageContent() {
     setFormStatus(null);
     if (!publicClient || !address) return;
     if (!isAddress(holder)) return setFormError("Enter a valid holder address.");
+    if (holder.toLowerCase() === zeroAddress) return setFormError("Holder cannot be the zero address.");
+    if (holder.toLowerCase() === address.toLowerCase()) return setFormError("Holder cannot be the issuer — pick a different address, e.g. the treasury.");
     if (!documentHash) return setFormError("Select a document so its hash can be committed.");
     if (!targetText.trim()) return setFormError("Enter the sustainability target.");
     if (!underwriterId || !monitorId || !settlementAgentId) return setFormError("Select all three agents.");
@@ -312,8 +329,29 @@ function AssetsPageContent() {
       const principalWei = parseEther(principal);
       const couponWei = parseEther(coupon);
       const maturityTsFinal = Math.floor(new Date(maturity).getTime() / 1000);
-      if (principalWei <= 0n || couponWei <= 0n) return setFormError("Principal and coupon must be positive.");
-      if (maturityTsFinal <= nowTs) return setFormError("Maturity must be in the future.");
+    if (principalWei <= 0n || couponWei <= 0n) return setFormError("Principal and coupon must be positive.");
+    if (maturityTsFinal <= Math.floor(Date.now() / 1000)) return setFormError("Maturity must be at least 1 hour in the future — the transaction must mine before maturity.");
+
+      // Pre-flight: verify all three agents are owned by this wallet — the most common revert cause.
+      setFormStatus("Verifying agents are owned by your wallet…");
+      const agentChecks = [
+        { id: underwriterId, role: "Underwriter" },
+        { id: monitorId, role: "Compliance Monitor" },
+        { id: settlementAgentId, role: "Settlement" },
+      ] as const;
+      const owners = await Promise.all(
+        agentChecks.map((a) =>
+          publicClient.readContract({ address: ADDRESSES.identities, abi: identityAbi, functionName: "ownerOf", args: [BigInt(a.id)] }),
+        ),
+      );
+      for (let i = 0; i < agentChecks.length; i++) {
+        if (owners[i].toLowerCase() !== address.toLowerCase()) {
+          return setFormError(
+            `Agent #${agentChecks[i].id} (${agentChecks[i].role}) is owned by ${truncateHash(owners[i])}, not your wallet (${truncateHash(address)}). Create your agents from the currently connected wallet first.`,
+          );
+        }
+      }
+
       setFormStatus("Waiting for registration approval…");
       const registerHash = await writeContractAsync({
         address: ADDRESSES.assets,
@@ -322,8 +360,11 @@ function AssetsPageContent() {
         args: [holder, assetType, principalWei, couponWei, keccak256(toBytes(targetText.trim())), documentHash, BigInt(maturityTsFinal), BigInt(underwriterId), BigInt(monitorId), BigInt(settlementAgentId)],
       });
       const registerReceipt = await publicClient.waitForTransactionReceipt({ hash: registerHash, timeout: 60_000 });
+      if (registerReceipt.status === "reverted") {
+        throw new Error(`Registration transaction reverted on-chain. Tx: ${registerHash}. Common causes: holder equals your address, maturity in the past, or agent ownership mismatch (each agent must be created from this wallet).`);
+      }
       const registered = decodeAssetRegisteredFromReceipt(registerReceipt);
-      if (!registered) throw new Error("Registration confirmed without AssetRegistered event.");
+      if (!registered) throw new Error("Registration confirmed but the AssetRegistered event was not found in the logs — this may indicate a provider issue. Try again.");
       persistAsset({ assetId: registered.assetId, registerTx: registerReceipt.transactionHash, targetText: targetText.trim() });
       setFormStatus("Registration confirmed. Waiting for funding approval…");
       const fundHash = await writeContractAsync({
@@ -333,7 +374,10 @@ function AssetsPageContent() {
         args: [BigInt(registered.assetId)],
         value: principalWei + couponWei,
       });
-      await publicClient.waitForTransactionReceipt({ hash: fundHash, timeout: 60_000 });
+      const fundReceipt = await publicClient.waitForTransactionReceipt({ hash: fundHash, timeout: 60_000 });
+      if (fundReceipt.status === "reverted") {
+        throw new Error(`Funding transaction reverted on-chain. Tx: ${fundHash}. The asset was registered but not funded.`);
+      }
       const current = loadAssetIndex().find((a) => a.assetId === registered.assetId);
       if (current) persistAsset({ ...current, fundTx: fundHash });
       queryClient.invalidateQueries({ queryKey: ["counts"] });
@@ -396,12 +440,28 @@ function AssetsPageContent() {
         functionName: "underwriteCommit",
         args: [BigInt(selected.assetId), BigInt(selected.underwriterId), underwriteReport.hash, underwriteReport.report.decision === "approve" ? 1 : 2, BigInt(underwriteReport.report.approvedPrincipalWei), BigInt(underwriteReport.report.approvedCouponWei), BigInt(underwriteReport.report.expiresAt), modelId],
       });
-      await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      if (receipt.status === "reverted") throw new Error(`Underwrite commit reverted on-chain. Tx: ${hash}.`);
       const current = loadAssetIndex().find((a) => a.assetId === selected.assetId);
       if (current) persistAsset({ ...current, underwriteTx: hash, underwriteReportHash: underwriteReport.hash });
-      setActionStatus("Underwrite committed on-chain. The asset can now be monitored.");
       queryClient.invalidateQueries({ queryKey: ["counts"] });
       queryClient.invalidateQueries({ queryKey: ["assets-page-detail"] });
+      setActionStatus(null);
+      setUnderwriteReport(null);
+      setSelected(null);
+      setSuccessInfo({
+        title: `Underwrite committed · asset #${selected.assetId}`,
+        note: `AI underwriter approved the asset — full principal + coupon are now eligible for settlement.`,
+        nextStep: "Next: run the AI compliance monitor to evaluate the sustainability target.",
+        rows: [
+          { label: "Decision", value: underwriteReport.report.decision === "approve" ? "Approve" : "Reject" },
+          { label: "Approved principal", value: `${formatEther(BigInt(underwriteReport.report.approvedPrincipalWei))} BOT` },
+          { label: "Approved coupon", value: `${formatEther(BigInt(underwriteReport.report.approvedCouponWei))} BOT` },
+          { label: "Risk score", value: String(underwriteReport.report.riskScore) },
+          { label: "Expires", value: new Date(underwriteReport.report.expiresAt * 1000).toLocaleString() },
+        ],
+        txHashes: [{ label: "Commit", hash }],
+      });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Underwrite commit failed.");
     }
@@ -442,12 +502,30 @@ function AssetsPageContent() {
         functionName: "monitorCommit",
         args: [BigInt(selected.assetId), BigInt(selected.monitorId), monitorReport.hash, monitorReport.report.outcome === "targetMet" ? 1 : 2, monitorReport.report.penaltyBps, monitorReport.report.evidenceHash, BigInt(monitorReport.report.observedAt), BigInt(monitorReport.report.expiresAt), modelId],
       });
-      await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
+      if (receipt.status === "reverted") throw new Error(`Monitor commit reverted on-chain. Tx: ${hash}.`);
       const current = loadAssetIndex().find((a) => a.assetId === selected.assetId);
       if (current) persistAsset({ ...current, monitorTx: hash, monitorReportHash: monitorReport.hash });
-      setActionStatus("Monitor outcome committed on-chain. The asset can now settle.");
       queryClient.invalidateQueries({ queryKey: ["counts"] });
       queryClient.invalidateQueries({ queryKey: ["assets-page-detail"] });
+      setActionStatus(null);
+      setMonitorReport(null);
+      setSelected(null);
+      setSuccessInfo({
+        title: `Monitor committed · asset #${selected.assetId}`,
+        note: monitorReport.report.outcome === "targetMet"
+          ? "AI compliance monitor confirmed the sustainability target was met — no penalty applied."
+          : `AI compliance monitor found the target was missed — ${monitorReport.report.penaltyBps / 100}% penalty will reduce the coupon payout.`,
+        nextStep: "Next: settle the asset to distribute principal and coupon.",
+        rows: [
+          { label: "Outcome", value: monitorReport.report.outcome === "targetMet" ? "Target met" : "Target missed" },
+          { label: "Penalty", value: `${monitorReport.report.penaltyBps / 100}%` },
+          { label: "Evidence", value: truncateHash(monitorReport.report.evidenceHash) },
+          { label: "Risk score", value: String(monitorReport.report.riskScore) },
+          { label: "Expires", value: new Date(monitorReport.report.expiresAt * 1000).toLocaleString() },
+        ],
+        txHashes: [{ label: "Commit", hash }],
+      });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Monitor commit failed.");
     }
@@ -526,7 +604,37 @@ function AssetsPageContent() {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs text-text-secondary">Holder address
-              <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="0x..." className="h-10 border border-border-strong bg-bg px-3 font-mono text-xs text-text-primary" />
+              <input
+                value={holder}
+                onChange={(e) => setHolder(e.target.value)}
+                placeholder="0x..."
+                aria-invalid={holderState.tone === "error"}
+                className={`h-10 border bg-bg px-3 font-mono text-xs text-text-primary focus:outline-none ${
+                  holderState.tone === "ok" ? "border-success" : holderState.tone === "error" ? "border-error" : "border-border-strong focus:border-accent"
+                }`}
+              />
+              <span className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => treasury.data && setHolder(treasury.data)}
+                  disabled={!treasury.data}
+                  className="h-7 border border-border-strong px-2 font-mono text-[11px] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
+                  title="Protocol treasury — receives the coupon haircut on a missed target"
+                >
+                  Treasury{treasury.data ? ` · ${treasury.data.slice(0, 6)}…${treasury.data.slice(-4)}` : ""}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => address && setHolder(address)}
+                  disabled={!address}
+                  className="h-7 border border-border-strong px-2 font-mono text-[11px] text-text-secondary hover:border-accent hover:text-accent disabled:opacity-50"
+                >
+                  My wallet{address ? ` · ${address.slice(0, 6)}…${address.slice(-4)}` : ""}
+                </button>
+              </span>
+              <span className={`font-mono text-[10px] ${holderState.tone === "error" ? "text-error" : holderState.tone === "ok" ? "text-success" : "text-text-tertiary"}`}>
+                {holderState.hint}
+              </span>
             </label>
             <label className="flex flex-col gap-1 text-xs text-text-secondary">Principal (BOT)
               <input value={principal} onChange={(e) => setPrincipal(e.target.value)} inputMode="decimal" className="h-10 border border-border-strong bg-bg px-3 font-mono text-sm text-text-primary" />
