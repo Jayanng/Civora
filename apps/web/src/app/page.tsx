@@ -32,7 +32,6 @@ export default function Home() {
           {mounted ? <ConnectButton showBalance={false} /> : null}
           {mounted && isConnected && !onBot ? <button type="button" disabled={isPending} onClick={() => switchChain({ chainId: botChain.id })} className="h-10 rounded-none bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover">{isPending ? "Switching…" : "Switch to BOT Chain (677)"}</button> : null}
           {mounted && isConnected && onBot ? <Link href="/app" className="inline-flex h-10 items-center rounded-none bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover">Launch App</Link> : null}
-          <Link href="/demo" className="inline-flex h-10 items-center rounded-none border border-border-strong px-4 font-grotesk text-sm text-text-primary hover:bg-surface">See live proof</Link>
         </div>
         <p className="font-mono text-sm text-text-secondary">{!mounted ? "…" : isConnected ? onBot ? "Connected on BOT Chain (677)." : "Wrong network — switch to BOT Chain (677)." : "Connect a wallet to issue an asset."}</p>
       </section>

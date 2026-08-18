@@ -2,15 +2,16 @@ import { parseAbi, parseAbiItem, zeroAddress, type Address, type PublicClient } 
 
 export type ReadClient = Pick<PublicClient, "readContract">;
 
+// Primary green deployment (redeployed 2026-08-18 with the credential-expiry guard live)
 export const ADDRESSES = {
-  identities: "0x9D59Ad33e1BF4F85695245B7ab14F1E613Ff36D2",
-  factory: "0xcd447F7eB818c4c9C88c89D4Ea73B6B3Ee207b30",
-  credentials: "0x077C7700c8FAaa6B9b79edac356D52Ea42356Cd0",
-  permissions: "0xbE063c28DC9ae7Aa3512c7Be4De24003d6B74b10",
-  assets: "0x2b282A37C33903aa7846804f2eaEB0F6dE08FCe8",
-  reputation: "0xD0b54BC0492af7c5D1A2C53120981B2c53647CBe",
-  vault: "0xCd6B48E2E31970397d382ac1B9D148a3b3f87DF4",
-  civora: "0x9Db3420Ce7AF793a0759B3b2DEd1C08D2CADE7a4",
+  identities: "0x0FC05eE7AB442273c531f4ADC094B8A6dBD28322",
+  factory: "0x341bdb60A1cfA089A90575957de6cB60f20Da1dC",
+  credentials: "0x62466501D07b3c2a66e7766a62CEB8C2C158c7E4",
+  permissions: "0x401CA8e374dBf345987A5488F4466537486E411d",
+  assets: "0xaE0169D822121821dAA2dfC67A43F63e4f8d703C",
+  reputation: "0x64a8c8267f35CA32cC1a5947097ff26AA123682e",
+  vault: "0xD1cC42405b1Ce5E17f9C6a57973BD409E2F70608",
+  civora: "0x1Ae2623FfB495a0211F44a061C94d44cb8f7fc3E",
 } as const satisfies Record<string, Address>;
 
 export const AGENT_TYPE = {

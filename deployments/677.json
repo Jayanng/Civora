@@ -5,8 +5,19 @@
   "explorer": "https://scan.botchain.ai",
   "deployer": "0x71708D8171F0Af75b0184861906B3678f7337E50",
   "treasury": "0x25df058A6BF583542E69DB26cA0646C7F30B1567",
-  "deployedAt": "2026-08-17",
+  "deployedAt": "2026-08-18",
   "primary": {
+    "AgentIdentity": "0x0FC05eE7AB442273c531f4ADC094B8A6dBD28322",
+    "AgentFactory": "0x341bdb60A1cfA089A90575957de6cB60f20Da1dC",
+    "CredentialRegistry": "0x62466501D07b3c2a66e7766a62CEB8C2C158c7E4",
+    "GreenPermissionEngine": "0x401CA8e374dBf345987A5488F4466537486E411d",
+    "GreenAssetRegistry": "0xaE0169D822121821dAA2dfC67A43F63e4f8d703C",
+    "Reputation": "0x64a8c8267f35CA32cC1a5947097ff26AA123682e",
+    "SettlementAndPenaltyVault": "0xD1cC42405b1Ce5E17f9C6a57973BD409E2F70608",
+    "Civora": "0x1Ae2623FfB495a0211F44a061C94d44cb8f7fc3E"
+  },
+  "previous": {
+    "deployedAt": "2026-08-17",
     "AgentIdentity": "0x9D59Ad33e1BF4F85695245B7ab14F1E613Ff36D2",
     "AgentFactory": "0xcd447F7eB818c4c9C88c89D4Ea73B6B3Ee207b30",
     "CredentialRegistry": "0x077C7700c8FAaa6B9b79edac356D52Ea42356Cd0",
@@ -17,6 +28,7 @@
     "Civora": "0x9Db3420Ce7AF793a0759B3b2DEd1C08D2CADE7a4"
   },
   "legacy": {
+    "deployedAt": "2026-07",
     "AgentIdentity": "0x5442B5c06d1D4c3165273465d62f04e2bA093d19",
     "AgentFactory": "0xcAF2ADA8743b7f9DA0A96EBb6fB98F76F8810cd8",
     "AttestationRegistry": "0x5D68b1275cb7EB3d6b5b9c09A16241276E959F46",

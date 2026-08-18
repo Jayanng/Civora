@@ -6,7 +6,6 @@
 - RPC: `https://rpc.botchain.ai`
 - Explorer: `https://scan.botchain.ai`
 - Primary app: `/app/assets`
-- Public proof: `/demo`
 - Demo escrow: `0.04 BOT principal + 0.01 BOT coupon = 0.05 BOT`
 - Holder: dedicated demo holder address, distinct from treasury
 - Agent roles: Underwriter, Compliance Monitor, Settlement

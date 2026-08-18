@@ -12,6 +12,21 @@ Civora is an agent-operated sustainability-linked RWA protocol on BOT Chain Main
 
 | Contract | Address |
 |---|---|
+| AgentIdentity | `0x0FC05eE7AB442273c531f4ADC094B8A6dBD28322` |
+| AgentFactory | `0x341bdb60A1cfA089A90575957de6cB60f20Da1dC` |
+| CredentialRegistry | `0x62466501D07b3c2a66e7766a62CEB8C2C158c7E4` |
+| GreenPermissionEngine | `0x401CA8e374dBf345987A5488F4466537486E411d` |
+| GreenAssetRegistry | `0xaE0169D822121821dAA2dfC67A43F63e4f8d703C` |
+| Reputation | `0x64a8c8267f35CA32cC1a5947097ff26AA123682e` |
+| SettlementAndPenaltyVault | `0xD1cC42405b1Ce5E17f9C6a57973BD409E2F70608` |
+| Civora facade | `0x1Ae2623FfB495a0211F44a061C94d44cb8f7fc3E` |
+
+The current deployment (2026-08-18) enforces `expiresAt <= maturity` on underwrite and monitor credentials in the facade. The Aug-17 deployment listed below remains on-chain as the previous green deployment with the original live proof.
+
+### Previous Green Deployment (2026-08-17)
+
+| Contract | Address |
+|---|---|
 | AgentIdentity | `0x9D59Ad33e1BF4F85695245B7ab14F1E613Ff36D2` |
 | AgentFactory | `0xcd447F7eB818c4c9C88c89D4Ea73B6B3Ee207b30` |
 | CredentialRegistry | `0x077C7700c8FAaa6B9b79edac356D52Ea42356Cd0` |
@@ -21,9 +36,7 @@ Civora is an agent-operated sustainability-linked RWA protocol on BOT Chain Main
 | SettlementAndPenaltyVault | `0xCd6B48E2E31970397d382ac1B9D148a3b3f87DF4` |
 | Civora facade | `0x9Db3420Ce7AF793a0759B3b2DEd1C08D2CADE7a4` |
 
-### Live Green Proof
-
-Target-met asset #1 is live on Mainnet:
+Its lifecycle proof remains verifiable on the BOT Explorer — target-met asset #1:
 
 - Register: `0xcafb3cd31e762f31e9ce7c6a42cd972f317bedd4634327c3e5b1d71d8a8f16fb`
 - Fund: `0xe5670cca0a6ee303b5cd9b138648c0da24add1bf9d0930edfe6727c58175e882`
@@ -32,7 +45,7 @@ Target-met asset #1 is live on Mainnet:
 - Settle: `0xca0fd3b11ea39fa939a99ebd5f1bc3537aca57b8ffa96dfac341fe4c81adaab9`
 - Drain blocked: `0xab6ea040ddb9c294e01d45ae29953dcacacf8ae05e43c441d3c0d860e5fa6e41`
 
-Target-missed asset #3 is also live and settled with a model-generated `penaltyBps=10000`:
+Target-missed asset #3, settled with a model-generated `penaltyBps=10000`:
 
 - Register: `0xb24a1473c4ee5f8c7edbf88b755262454890f106a02e19e9b800b07ad11ac235`
 - Fund: `0xb53128299a41f46bbb10394416b126d835f9a5e7728274d7e0e462279efd9c39`
@@ -74,7 +87,6 @@ Each agent has an ERC-721-style identity and dedicated AgentWallet. The implemen
 The primary app sections are:
 
 - `/` — Civora sustainability-linked RWA landing page
-- `/demo` — wallet-free live proof view for primary asset #1
 - `/app` — live dashboard
 - `/app/agents` — three agent roles and wallets
 - `/app/assets` — issue, fund, underwrite, monitor, settle
