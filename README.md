@@ -106,12 +106,16 @@ pnpm --filter @civora/web dev
 Required environment values are listed in `.env.example`:
 
 ```text
+PRIVATE_KEY=
+DEPLOYER_ADDRESS=
+CIVORA_TREASURY=
 GMI_API_KEY=
 GMI_MODEL=deepseek-ai/DeepSeek-V4-Flash
 GMI_BASE_URL=https://api.gmi-serving.com/v1
+AI_RATE_LIMIT_PER_MIN=15
+BLOB_READ_WRITE_TOKEN=
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
 NEXT_PUBLIC_CHAIN_ID=677
-BLOB_READ_WRITE_TOKEN=
 ```
 
 `BLOB_READ_WRITE_TOKEN` is required for persistent production reports. Local development falls back to `apps/web/data/reports`.
@@ -125,7 +129,7 @@ forge test
 
 ## Legacy Invoice Proof
 
-The original invoice-first Civora deployment remains on BOT Chain as historical proof. It is preserved in `deployments/677.json.legacy` and remains verifiable:
+The original invoice-first Civora deployment remains on BOT Chain as historical proof. It is preserved in `deployments/677.json` under the `legacy` block and remains verifiable:
 
 - Legacy register: `0x1d5c011be88c62e30634fa08e69c844bde450570ce202ff4b5c7af706ec1feff`
 - Legacy fund: `0xfc4aab33c69d8c550e80f0b5764dcb854aa859f749e7258a5aa32a142011ea8e`
@@ -161,4 +165,4 @@ Civora is designed for seamless future integration with BOT Chain's AI Agent inf
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

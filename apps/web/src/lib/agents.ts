@@ -7,6 +7,8 @@ const INDEX_KEY = "civora.agents.v2";
 export interface IndexedAgent {
   agentId: number;
   txHash: `0x${string}`;
+  /** 1 | 2 | 3 — persisted at creation so coverage indicators update instantly. */
+  agentType?: number;
 }
 
 function readIndexFromStorage(): IndexedAgent[] {

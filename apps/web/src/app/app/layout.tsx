@@ -6,8 +6,8 @@ import type { ReactNode } from "react";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <WalletGate>
-      <AppShell>{children}</AppShell>
-    </WalletGate>
+    <AppShell>
+      <WalletGate>{children}</WalletGate>
+    </AppShell>
   );
 }

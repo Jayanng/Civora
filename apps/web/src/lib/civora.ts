@@ -85,7 +85,8 @@ export const credentialsAbi = parseAbi([
 ]);
 
 export const permissionAbi = parseAbi([
-  "function grantIdOf(uint256 assetId, uint256 agentId, bytes4 selector) external view returns (uint256)",
+  // Public mapping getter: keccak256(abi.encode(assetId, agentId, selector)) => grantId.
+  "function grantIdOf(bytes32 key) external view returns (uint256)",
   "function grants(uint256 grantId) external view returns (uint256 assetId, uint256 agentId, bytes4 selector, uint256 maxValue, uint64 expiresAt, bool revoked, address granter)",
 ]);
 
@@ -189,4 +190,36 @@ export async function fetchSettledStats(
 export const agentCreatedItem = parseAbiItem(
   "event AgentCreated(uint256 indexed agentId, address indexed owner, uint8 agentType, address wallet, string name)",
 );
+
+export interface EscrowStats {
+  count: number;
+  valueWei: bigint;
+  /** True when the registry exceeded the scan cap and the count is not exhaustive. */
+  capped: boolean;
+}
+
+/** Sums principal + coupon across assets still held by the vault (Funded, Underwritten, Monitored). */
+export async function fetchEscrowStats(
+  client: ReadClient,
+  total: bigint,
+  maxAssets = 256n,
+): Promise<EscrowStats> {
+  if (total > maxAssets) return { count: 0, valueWei: 0n, capped: true };
+  let count = 0;
+  let valueWei = 0n;
+  for (let id = 1n; id <= total; id++) {
+    const asset = await client.readContract({
+      address: ADDRESSES.assets,
+      abi: assetsAbi,
+      functionName: "assets",
+      args: [id],
+    });
+    const state = asset[11];
+    if (state === 2 || state === 3 || state === 4) {
+      count++;
+      valueWei += asset[3] + asset[4];
+    }
+  }
+  return { count, valueWei, capped: false };
+}
 

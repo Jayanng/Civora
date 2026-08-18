@@ -2,13 +2,21 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
 import { formatEther } from "viem";
-import { useAccount, usePublicClient } from "wagmi";
-import { ADDRESSES, agentExists, assetExists, fetchSettledStats, findTotal, reputationAbi } from "@/lib/civora";
+import { useAccount, useBalance, usePublicClient } from "wagmi";
+import { fetchDashboardData } from "@/lib/dashboard";
 import { loadAgentIndex, subscribeAgentIndex } from "@/lib/agents";
 import { loadAssetIndex, subscribeAssetIndex } from "@/lib/assets";
 import { TxLink } from "@/components/TxLink";
-import { useSyncExternalStore } from "react";
+import { NetworkPill } from "@/components/landing/NetworkPill";
+import { PipelineBoard, StateDistribution } from "@/components/dashboard/PipelineBoard";
+import { EscrowRunway, WalletSummary } from "@/components/dashboard/EscrowRunway";
+import { AgentLedger, FeeSparkline, HaircutTracker } from "@/components/dashboard/AgentLedger";
+import { CredentialIntegrity, PermissionSnapshot } from "@/components/dashboard/IntegrityPanel";
+import { MaturityCountdown } from "@/components/dashboard/MaturityCountdown";
+import { PortfolioTable } from "@/components/dashboard/PortfolioTable";
+import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 
 function MetricCard({ label, value, caption }: { label: string; value: string; caption: string }) {
   return (
@@ -25,37 +33,20 @@ export default function DashboardPage() {
   const { address } = useAccount();
   const agents = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
   const assets = useSyncExternalStore(subscribeAssetIndex, loadAssetIndex, loadAssetIndex);
+  const { data: walletBalance } = useBalance({ address });
 
-  const agentCount = useQuery({
-    queryKey: ["counts", "primary-agents"],
-    queryFn: () => publicClient ? findTotal(publicClient, (id) => agentExists(publicClient, id)) : 0n,
-    enabled: !!publicClient,
-    refetchInterval: 15_000,
-  });
-  const assetCount = useQuery({
-    queryKey: ["counts", "assets"],
-    queryFn: () => publicClient ? findTotal(publicClient, (id) => assetExists(publicClient, id)) : 0n,
-    enabled: !!publicClient,
-    refetchInterval: 15_000,
-  });
-  const settled = useQuery({
-    queryKey: ["counts", "green-settled", assetCount.data?.toString()],
-    queryFn: () => publicClient ? fetchSettledStats(publicClient, assetCount.data ?? 0n) : { count: 0, valueWei: 0n, capped: false },
-    enabled: !!publicClient && assetCount.data !== undefined,
-    refetchInterval: 15_000,
-  });
-  const reputation = useQuery({
-    queryKey: ["counts", "green-reputation", address, agents.map((a) => a.agentId).join(",")],
-    queryFn: async () => {
-      if (!publicClient || agents.length === 0) return 0n;
-      const scores = await Promise.all(agents.map((agent) => publicClient.readContract({ address: ADDRESSES.reputation, abi: reputationAbi, functionName: "score", args: [BigInt(agent.agentId)] })));
-      return scores.reduce((sum, score) => sum + score, 0n);
-    },
+  const agentIds = agents.map((a) => a.agentId).join(",");
+
+  const dashboard = useQuery({
+    queryKey: ["dashboard", "green", agentIds],
+    queryFn: () => (publicClient ? fetchDashboardData(publicClient, agents.map((a) => a.agentId)) : null),
     enabled: !!publicClient,
     refetchInterval: 15_000,
   });
 
-  const loading = agentCount.isLoading || assetCount.isLoading || settled.isLoading;
+  const data = dashboard.data;
+  const loading = dashboard.isLoading;
+
   const activity = [
     ...agents.map((agent) => ({ label: `Agent #${agent.agentId} created`, hash: agent.txHash })),
     ...assets.flatMap((asset) => [
@@ -74,20 +65,59 @@ export default function DashboardPage() {
           <h1 className="font-grotesk text-2xl font-semibold tracking-tight">Dashboard</h1>
           <p className="mt-1 font-mono text-xs text-text-secondary">Civora sustainability-linked assets, read live from BOT Chain 677.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
+          <NetworkPill />
           <Link href="/app/agents?new=1" className="inline-flex h-10 items-center rounded-none bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover">Create Agent</Link>
           <Link href="/app/assets?new=1" className="inline-flex h-10 items-center rounded-none border border-border-strong px-4 font-grotesk text-sm font-medium text-text-primary hover:bg-surface">Issue Asset</Link>
         </div>
       </header>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="Active Agents" value={loading ? "…" : agentCount.data?.toString() ?? "0"} caption="AgentIdentity.exists()" />
-        <MetricCard label="Registered Assets" value={loading ? "…" : assetCount.data?.toString() ?? "0"} caption="GreenAssetRegistry.assets()" />
-        <MetricCard label="Total Settled" value={loading ? "…" : settled.data?.capped ? "256+ assets" : `${settled.data?.count ?? 0} · ${formatEther(settled.data?.valueWei ?? 0n)} BOT`} caption="settled assets, on-chain" />
-        <MetricCard label="Your Agent Reputation" value={reputation.isLoading ? "…" : reputation.data?.toString() ?? "0"} caption="Reputation.score()" />
+        <MetricCard label="Active Agents" value={loading ? "…" : data?.agentCount.toString() ?? "0"} caption="AgentIdentity.exists()" />
+        <MetricCard label="Registered Assets" value={loading ? "…" : data?.assetCount.toString() ?? "0"} caption="GreenAssetRegistry.assets()" />
+        <MetricCard label="Total Settled" value={loading ? "…" : `${data?.settledCount ?? 0} · ${formatEther(data?.settledValueWei ?? 0n)} BOT`} caption="settled assets, on-chain" />
+        <MetricCard label="Escrow In Flight" value={loading ? "…" : `${formatEther(data?.escrowValueWei ?? 0n)} BOT`} caption={`${data?.escrowCount ?? 0} funded assets held`} />
       </div>
+
+      {data && data.assets.length > 0 ? (
+        <>
+          <section className="flex flex-col gap-4 rounded-md border border-border bg-surface p-4">
+            <h2 className="font-grotesk text-sm font-medium">Asset pipeline</h2>
+            <StateDistribution assets={data.assets} />
+            <PipelineBoard assets={data.assets} />
+          </section>
+
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <EscrowRunway data={data} />
+            <WalletSummary data={data} walletBalance={walletBalance?.value ?? null} address={address} />
+            <MaturityCountdown data={data} />
+          </section>
+
+          <AgentLedger data={data} />
+
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <FeeSparkline data={data} />
+            <HaircutTracker data={data} />
+          </section>
+
+          <section className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <CredentialIntegrity indexed={assets} />
+            <PermissionSnapshot data={data} />
+          </section>
+        </>
+      ) : loading ? (
+        <p className="rounded-md border border-border bg-surface p-6 text-center font-mono text-sm text-text-tertiary">Reading BOT Chain…</p>
+      ) : null}
+
+      {/* Guide only while the roster is empty — once agents exist, the checklist gives way to the live dashboard. */}
+      {agents.length === 0 ? <OnboardingChecklist /> : null}
+
+      <PortfolioTable data={data ?? { assets: [], grants: [], underwrites: new Map(), monitors: new Map(), agentDetails: new Map(), agentCount: 0n, assetCount: 0n, settledCount: 0, settledValueWei: 0n, escrowValueWei: 0n, escrowCount: 0, haircutValueWei: 0n, missedCount: 0 }} indexed={assets} />
+
       <section className="rounded-md border border-border bg-surface p-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs uppercase tracking-widest text-text-secondary">Recent activity</h2>
+          <p className="font-mono text-[11px] text-text-tertiary">your wallet, on-chain</p>
           <Link href="/app/activity" className="font-mono text-xs text-accent hover:text-accent-hover">View all</Link>
         </div>
         {activity.length === 0 ? <p className="mt-4 font-mono text-sm text-text-tertiary">No indexed activity for this wallet.</p> : (
