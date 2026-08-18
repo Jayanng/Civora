@@ -40,7 +40,7 @@ export default function DashboardPage() {
   });
   const settled = useQuery({
     queryKey: ["counts", "green-settled", assetCount.data?.toString()],
-    queryFn: () => publicClient ? fetchSettledStats(publicClient, assetCount.data ?? 0n) : { count: 0, valueWei: 0n },
+    queryFn: () => publicClient ? fetchSettledStats(publicClient, assetCount.data ?? 0n) : { count: 0, valueWei: 0n, capped: false },
     enabled: !!publicClient && assetCount.data !== undefined,
     refetchInterval: 15_000,
   });
@@ -82,7 +82,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Active Agents" value={loading ? "…" : agentCount.data?.toString() ?? "0"} caption="AgentIdentity.exists()" />
         <MetricCard label="Registered Assets" value={loading ? "…" : assetCount.data?.toString() ?? "0"} caption="GreenAssetRegistry.assets()" />
-        <MetricCard label="Total Settled" value={loading ? "…" : `${settled.data?.count ?? 0} · ${formatEther(settled.data?.valueWei ?? 0n)} BOT`} caption="settled assets, on-chain" />
+        <MetricCard label="Total Settled" value={loading ? "…" : settled.data?.capped ? "256+ assets" : `${settled.data?.count ?? 0} · ${formatEther(settled.data?.valueWei ?? 0n)} BOT`} caption="settled assets, on-chain" />
         <MetricCard label="Your Agent Reputation" value={reputation.isLoading ? "…" : reputation.data?.toString() ?? "0"} caption="Reputation.score()" />
       </div>
       <section className="rounded-md border border-border bg-surface p-4">

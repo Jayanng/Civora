@@ -1,6 +1,6 @@
 import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
-import { agentCreatedItem } from "./civora";
+import { ADDRESSES, agentCreatedItem } from "./civora";
 
 const INDEX_KEY = "civora.agents.v2";
 
@@ -88,7 +88,8 @@ export function decodeAgentCreatedFromReceipt(
   receipt: TransactionReceipt,
 ): DecodedAgentCreated | null {
   for (const log of receipt.logs) {
-    if (log.address.toLowerCase() !== "0xcaf2ada8743b7f9da0a96ebb6fb98f76f8810cd8") {
+    // Compare against the primary factory; the legacy factory was retired with the green cutover.
+    if (log.address.toLowerCase() !== ADDRESSES.factory.toLowerCase()) {
       continue;
     }
     try {

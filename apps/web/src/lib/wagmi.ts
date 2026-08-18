@@ -1,8 +1,10 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { http, defineChain } from "viem";
 
+export const BOT_CHAIN_ID = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? 677);
+
 export const botChain = defineChain({
-  id: 677,
+  id: BOT_CHAIN_ID,
   name: "BOT Chain",
   nativeCurrency: { name: "BOT", symbol: "BOT", decimals: 18 },
   rpcUrls: {

@@ -9,7 +9,7 @@ import {GreenPermissionEngine} from "./GreenPermissionEngine.sol";
 import {SettlementAndPenaltyVault} from "./SettlementAndPenaltyVault.sol";
 import {Reputation} from "./Reputation.sol";
 import {AssetType, AssetState, UnderwriteDecision, MonitorOutcome} from "./Types.sol";
-import {NotController, InvalidApprovedAmount, InvalidState, InvalidCoupon} from "./Errors.sol";
+import {NotController, InvalidApprovedAmount, InvalidState, InvalidCoupon, InvalidExpiry} from "./Errors.sol";
 
 /// @title CivoraGreen
 /// @notice Facade: one-tx underwrite commit and one-tx monitor commit for green assets.
@@ -55,6 +55,9 @@ contract CivoraGreen {
         GreenAssetRegistry.GreenAsset memory a = _asset(assetId);
         if (a.state != AssetState.Funded) revert InvalidState(uint8(a.state), uint8(AssetState.Funded));
         if (a.underwriterId != underwriterId) revert NotController();
+        // The credential may not outlive the asset: a far-future expiry would lock the escrow
+        // past maturity and shadow the issuer's maturity-based refund path in the vault.
+        if (expiresAt > a.maturity) revert InvalidExpiry();
         if (decision == UnderwriteDecision.Approve) {
             if (approvedPrincipalWei != a.principalWei) revert InvalidApprovedAmount();
             if (approvedCouponWei == 0 || approvedCouponWei > a.couponWei) revert InvalidCoupon();
@@ -86,6 +89,7 @@ contract CivoraGreen {
         GreenAssetRegistry.GreenAsset memory a = _asset(assetId);
         if (a.state != AssetState.Underwritten) revert InvalidState(uint8(a.state), uint8(AssetState.Underwritten));
         if (a.monitorId != monitorId) revert NotController();
+        if (expiresAt > a.maturity) revert InvalidExpiry();
 
         credentials.submitMonitor(
             assetId, monitorId, reportHash, outcome, penaltyBps, evidenceHash, observedAt, expiresAt, modelId

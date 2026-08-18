@@ -179,7 +179,9 @@ contract SettlementVault is ReentrancyGuard {
         _pay(identity.walletOf(inv.settlementAgentId), saAmt);
         if (refundAmt > 0) _pay(inv.payer, refundAmt);
 
+        // forge-lint: disable-next-line(unsafe-typecast) -- fixed-width ASCII reason labels
         reputation.bump(inv.underwriterId, 1, bytes32("SETTLE_UW"));
+        // forge-lint: disable-next-line(unsafe-typecast) -- fixed-width ASCII reason labels
         reputation.bump(inv.settlementAgentId, 2, bytes32("SETTLE_SA"));
 
         emit Settled(invoiceId, payeeAmt, protocolAmt, uwAmt, saAmt, refundAmt);

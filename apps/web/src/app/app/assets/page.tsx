@@ -55,6 +55,7 @@ interface MonitorReport {
 
 interface AssetActionData {
   assetId: number;
+  assetType: number;
   principalWei: string;
   couponWei: string;
   maturity: number;
@@ -65,6 +66,7 @@ interface AssetActionData {
   underwriterId: number;
   monitorId: number;
   settlementAgentId: number;
+  targetText?: string;
 }
 
 function AgentOption({ agentId, requiredType }: { agentId: number; requiredType: 1 | 2 | 3 }) {
@@ -100,6 +102,7 @@ function AssetRow({
   const actionData = chainAsset.data
     ? {
         assetId: asset.assetId,
+        assetType: Number(chainAsset.data[2]),
         principalWei: chainAsset.data[3].toString(),
         couponWei: chainAsset.data[4].toString(),
         maturity: Number(chainAsset.data[7]),
@@ -110,6 +113,7 @@ function AssetRow({
         underwriterId: Number(chainAsset.data[8]),
         monitorId: Number(chainAsset.data[9]),
         settlementAgentId: Number(chainAsset.data[10]),
+        targetText: asset.targetText,
       }
     : null;
 
@@ -184,6 +188,7 @@ function AssetsPageContent() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formStatus, setFormStatus] = useState<string | null>(null);
   const [selected, setSelected] = useState<AssetActionData | null>(null);
+  const [pendingAction, setPendingAction] = useState<"underwrite" | "monitor" | null>(null);
   const [underwriteReport, setUnderwriteReport] = useState<{ hash: `0x${string}`; report: UnderwriteReport } | null>(null);
   const [monitorReport, setMonitorReport] = useState<{ hash: `0x${string}`; report: MonitorReport } | null>(null);
   const [evidenceText, setEvidenceText] = useState("Telemetry evidence confirms the sustainability target status.");
@@ -233,7 +238,7 @@ function AssetsPageContent() {
       const registerReceipt = await publicClient.waitForTransactionReceipt({ hash: registerHash, timeout: 60_000 });
       const registered = decodeAssetRegisteredFromReceipt(registerReceipt);
       if (!registered) throw new Error("Registration confirmed without AssetRegistered event.");
-      persistAsset({ assetId: registered.assetId, registerTx: registerReceipt.transactionHash });
+      persistAsset({ assetId: registered.assetId, registerTx: registerReceipt.transactionHash, targetText: targetText.trim() });
       setFormStatus("Registration confirmed. Waiting for funding approval…");
       const fundHash = await writeContractAsync({
         address: ADDRESSES.vault,
@@ -255,6 +260,7 @@ function AssetsPageContent() {
 
   const runUnderwrite = async (data: AssetActionData) => {
     setSelected(data);
+    setPendingAction("underwrite");
     setUnderwriteReport(null);
     setMonitorReport(null);
     setActionError(null);
@@ -262,7 +268,7 @@ function AssetsPageContent() {
     try {
       const res = await fetch("/api/underwrite", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
         assetId: String(data.assetId), principalWei: data.principalWei, couponWei: data.couponWei, maturity: data.maturity,
-        holder: data.holder, issuer: data.issuer, targetHash: data.targetHash, documentHash: data.documentHash, assetType,
+        holder: data.holder, issuer: data.issuer, targetHash: data.targetHash, documentHash: data.documentHash, assetType: data.assetType,
       }) });
       const payload = (await res.json()) as { error?: string; reportHash?: `0x${string}`; report?: UnderwriteReport };
       if (!res.ok || !payload.reportHash || !payload.report) throw new Error(payload.error ?? "Underwrite failed.");
@@ -298,14 +304,16 @@ function AssetsPageContent() {
 
   const runMonitor = async (data: AssetActionData) => {
     setSelected(data);
+    setPendingAction("monitor");
     setMonitorReport(null);
+    setUnderwriteReport(null);
     setActionError(null);
     setActionStatus("AI Compliance Monitor is evaluating the target…");
     try {
       const evidenceHash = keccak256(toBytes(evidenceText.trim()));
       const res = await fetch("/api/monitor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
         assetId: String(data.assetId), principalWei: data.principalWei, couponWei: data.couponWei, targetHash: data.targetHash,
-        targetText, documentHash: data.documentHash, evidenceHash, evidenceText, maturity: data.maturity,
+        targetText: data.targetText ?? targetText, documentHash: data.documentHash, evidenceHash, evidenceText, maturity: data.maturity,
       }) });
       const payload = (await res.json()) as { error?: string; reportHash?: `0x${string}`; report?: MonitorReport };
       if (!res.ok || !payload.reportHash || !payload.report) throw new Error(payload.error ?? "Monitor failed.");
@@ -437,7 +445,7 @@ function AssetsPageContent() {
       </section>
 
       {selected && underwriteReport ? <section className="flex flex-col gap-3"><AiReportPanel title={`Underwrite · asset #${selected.assetId}`} reportHash={underwriteReport.hash} report={underwriteReport.report as unknown as Record<string, unknown>} /><button type="button" onClick={() => void commitUnderwrite()} className="h-9 self-start bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover">Commit underwrite</button></section> : null}
-      {selected && !underwriteReport && selected ? <label className="flex flex-col gap-1 text-xs text-text-secondary">Monitor evidence note
+      {selected && pendingAction === "monitor" && !monitorReport ? <label className="flex flex-col gap-1 text-xs text-text-secondary">Monitor evidence note
         <textarea value={evidenceText} onChange={(e) => setEvidenceText(e.target.value)} rows={2} className="border border-border-strong bg-bg px-3 py-2 text-sm text-text-primary" />
       </label> : null}
       {selected && monitorReport ? <section className="flex flex-col gap-3"><AiReportPanel title={`Compliance monitor · asset #${selected.assetId}`} reportHash={monitorReport.hash} report={monitorReport.report as unknown as Record<string, unknown>} /><button type="button" onClick={() => void commitMonitor()} className="h-9 self-start bg-accent px-4 font-grotesk text-sm font-medium text-text-on-accent hover:bg-accent-hover">Commit monitor outcome</button></section> : null}

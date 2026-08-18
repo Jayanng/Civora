@@ -11,9 +11,6 @@ export const ADDRESSES = {
   reputation: "0xD0b54BC0492af7c5D1A2C53120981B2c53647CBe",
   vault: "0xCd6B48E2E31970397d382ac1B9D148a3b3f87DF4",
   civora: "0x9Db3420Ce7AF793a0759B3b2DEd1C08D2CADE7a4",
-  // Legacy v1 addresses (kept for backward compat during migration)
-  invoices: "0xB321a3FAAf9e7C5644f0db9a7753Ef4B9F51b03C" as Address,
-  attestations: "0x5D68b1275cb7EB3d6b5b9c09A16241276E959F46" as Address,
 } as const satisfies Record<string, Address>;
 
 export const AGENT_TYPE = {
@@ -124,26 +121,6 @@ export const settledItem = parseAbiItem(
   "event Settled(uint256 indexed assetId, uint256 holderPrincipal, uint256 holderCoupon, uint256 protocolAmt, uint256 uwAmt, uint256 monAmt, uint256 saAmt, uint256 haircutAmt, bool targetMet)",
 );
 
-// Legacy invoice ABIs (v1, retained while pages migrate)
-export const invoicesAbi = parseAbi([
-  "function register(address counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint256 underwriterId, uint256 settlementAgentId) external returns (uint256 invoiceId)",
-  "function invoices(uint256 invoiceId) external view returns (address payer, address counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint8 state, uint256 underwriterId, uint256 settlementAgentId)",
-]);
-
-export const attestationAbi = parseAbi([
-  "function attestations(uint256 invoiceId) external view returns (uint256 invoiceId, uint256 agentId, bytes32 reportHash, uint8 decision, uint256 approvedAmount, uint64 expiresAt, bytes32 modelId, uint64 issuedAt)",
-]);
-
-export const INVOICE_STATE_NAMES = {
-  1: "Registered",
-  2: "Funded",
-  3: "Attested",
-  4: "Settled",
-  5: "Refunded",
-} as const;
-
-export type InvoiceStateValue = keyof typeof INVOICE_STATE_NAMES;
-
 export async function findTotal(
   client: ReadClient,
   isSet: (id: bigint) => Promise<boolean>,
@@ -181,6 +158,8 @@ export function assetExists(client: ReadClient, assetId: bigint) {
 export interface SettledStats {
   count: number;
   valueWei: bigint;
+  /** True when the registry exceeded the scan cap and the count is not exhaustive. */
+  capped: boolean;
 }
 
 export async function fetchSettledStats(
@@ -188,7 +167,7 @@ export async function fetchSettledStats(
   total: bigint,
   maxAssets = 256n,
 ): Promise<SettledStats> {
-  if (total > maxAssets) return { count: 0, valueWei: 0n };
+  if (total > maxAssets) return { count: 0, valueWei: 0n, capped: true };
   let count = 0;
   let valueWei = 0n;
   for (let id = 1n; id <= total; id++) {
@@ -203,27 +182,10 @@ export async function fetchSettledStats(
       valueWei += asset[3];
     }
   }
-  return { count, valueWei };
-}
-
-// Legacy invoice helpers (v1)
-export function invoiceExists(client: ReadClient, invoiceId: bigint) {
-  return client.readContract({
-    address: "0xB321a3FAAf9e7C5644f0db9a7753Ef4B9F51b03C",
-    abi: invoicesAbi,
-    functionName: "invoices",
-    args: [invoiceId],
-  }).then((inv) => inv[0] !== zeroAddress);
+  return { count, valueWei, capped: false };
 }
 
 export const agentCreatedItem = parseAbiItem(
   "event AgentCreated(uint256 indexed agentId, address indexed owner, uint8 agentType, address wallet, string name)",
 );
 
-export const invoiceRegisteredItem = parseAbiItem(
-  "event InvoiceRegistered(uint256 indexed invoiceId, address indexed payer, address indexed counterparty, uint256 amount, uint64 dueDate, bytes32 documentHash, uint256 underwriterId, uint256 settlementAgentId)",
-);
-
-export const attestedItem = parseAbiItem(
-  "event Attested(uint256 indexed invoiceId, uint256 indexed agentId, bytes32 reportHash, uint8 decision, uint256 approvedAmount, uint64 expiresAt, bytes32 modelId)",
-);

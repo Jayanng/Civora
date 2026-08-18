@@ -36,6 +36,8 @@ export interface IndexedAsset {
   monitorTx?: `0x${string}`;
   monitorReportHash?: `0x${string}`;
   settleTx?: `0x${string}`;
+  /** The plain-text sustainability target entered at issue time (its hash is on-chain). */
+  targetText?: string;
 }
 
 function readIndexFromStorage(): IndexedAsset[] {

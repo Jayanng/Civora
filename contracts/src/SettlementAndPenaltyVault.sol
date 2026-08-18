@@ -184,8 +184,11 @@ contract SettlementAndPenaltyVault is ReentrancyGuard {
         _pay(identity.walletOf(a.monitorId), monAmt);
         _pay(identity.walletOf(a.settlementAgentId), saAmt);
 
+        // forge-lint: disable-next-line(unsafe-typecast) -- fixed-width ASCII reason labels
         reputation.bump(a.underwriterId, 1, bytes32("SETTLE_UW"));
+        // forge-lint: disable-next-line(unsafe-typecast) -- fixed-width ASCII reason labels
         reputation.bump(a.monitorId, 2, bytes32("SETTLE_MON"));
+        // forge-lint: disable-next-line(unsafe-typecast) -- fixed-width ASCII reason labels
         reputation.bump(a.settlementAgentId, 1, bytes32("SETTLE_SA"));
 
         emit Settled(assetId, a.principalWei, holderCoupon, protocolAmt, uwAmt, monAmt, saAmt, haircut, targetMet);

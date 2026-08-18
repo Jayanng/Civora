@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { keccak256, toBytes } from "viem";
 import { putReport } from "@/lib/report-store";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const SYSTEM_PROMPT = [
   "You are the Civora Underwriter Agent for sustainability-linked assets on BOT Chain.",
@@ -67,6 +68,13 @@ function parseModelJson(content: string): Record<string, unknown> | null {
 }
 
 export async function POST(req: Request) {
+  const limited = checkRateLimit(req);
+  if (!limited.allowed) {
+    return Response.json(
+      { error: "rate limit exceeded — retry shortly" },
+      { status: 429, headers: { "retry-after": String(limited.retryAfterSec) } },
+    );
+  }
   const { key, model, baseUrl } = loadGmiConfig();
   if (!key) {
     return Response.json({ error: "underwriter unavailable" }, { status: 503 });

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AgentIdentity} from "../src/AgentIdentity.sol";
 import {AgentFactory} from "../src/AgentFactory.sol";
 import {AgentType, UnderwriteDecision, MonitorOutcome} from "../src/Types.sol";
-import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired, GrantRevoked, InvalidFundingAmount, NotPayer, NothingToRefund, AlreadySettled, UnauthorizedCaller, NotMonitored, InvalidState} from "../src/Errors.sol";
+import {InvalidAgentType, InvalidApprovedAmount, InvalidPenalty, InvalidMonitorOutcome, AlreadyCredentialed, NotController, PermissionDenied, NotSettlement, Expired, GrantRevoked, InvalidFundingAmount, NotPayer, NothingToRefund, AlreadySettled, UnauthorizedCaller, NotMonitored, InvalidState, InvalidExpiry} from "../src/Errors.sol";
 import {CredentialRegistry} from "../src/CredentialRegistry.sol";
 import {GreenPermissionEngine} from "../src/GreenPermissionEngine.sol";
 import {GreenAssetRegistry} from "../src/GreenAssetRegistry.sol";
@@ -449,6 +449,28 @@ contract CivoraGreenTest is Test {
         (, , , , , , , , , , , AssetState state) = assets.assets(id);
         assertEq(uint8(state), uint8(AssetState.Underwritten));
         permissions.check(id, saId, vault.settle.selector, p + c);
+    }
+
+    function test_underwriteCommitExpiryBoundedByMaturity() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c); // maturity = now + 30 days
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        vm.expectRevert(InvalidExpiry.selector);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 31 days), MODEL);
+    }
+
+    function test_monitorCommitExpiryBoundedByMaturity() public {
+        uint256 p = 1 ether;
+        uint256 c = 0.1 ether;
+        uint256 id = _registerAsset(p, c); // maturity = now + 30 days
+        _fundAsset(id, p, c);
+        vm.prank(alice);
+        civora.underwriteCommit(id, uwId, REPORT, UnderwriteDecision.Approve, p, c, uint64(block.timestamp + 7 days), MODEL);
+        vm.prank(alice);
+        vm.expectRevert(InvalidExpiry.selector);
+        civora.monitorCommit(id, monId, REPORT, MonitorOutcome.TargetMet, 0, EVIDENCE, uint64(block.timestamp), uint64(block.timestamp + 31 days), MODEL);
     }
 
     function test_underwriteCommitRejectLeavesFunded() public {

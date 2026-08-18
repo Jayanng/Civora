@@ -210,6 +210,15 @@ contract CivoraTest is Test {
         assertEq(alice.balance, aliceAfterFund + refundAmt);
     }
 
+    function test_grantWithoutAttestationRevertsPermissionDenied() public {
+        uint256 amount = 0.05 ether;
+        uint256 id = _register(amount, 30 days, bob);
+        _fund(id, amount);
+        vm.prank(alice);
+        vm.expectRevert(PermissionDenied.selector);
+        permissions.grant(id, saId, vault.settle.selector, amount, uint64(block.timestamp + 7 days));
+    }
+
     function test_rejectThenRefund() public {
         uint256 amount = 0.05 ether;
         uint256 id = _register(amount, 30 days, bob);

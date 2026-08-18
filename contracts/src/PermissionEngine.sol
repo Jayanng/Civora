@@ -74,6 +74,9 @@ contract PermissionEngine {
     {
         if (identity.agentTypeOf(agentId) != AgentType.Settlement) revert InvalidAgentType();
         if (expiresAt <= block.timestamp) revert Expired();
+        // A grant must follow a real attestation. Reading the default (empty) attestation would
+        // surface a raw ERC721 error from ownerOf(0) instead of a clean PermissionDenied.
+        if (!AttestationRegistry(attestationRegistry).hasAttestation(invoiceId)) revert PermissionDenied();
 
         (, uint256 underwriterId,,,,,,) = AttestationRegistry(attestationRegistry).attestations(invoiceId);
         address underwriterController = identity.ownerOf(underwriterId);
