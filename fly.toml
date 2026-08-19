@@ -1,27 +1,31 @@
-# civora — Fly.io config
-# If the app name is taken on Fly, change it below or use `fly launch` which prompts you.
+# fly.toml app configuration file generated for civora on 2026-08-19T13:28:06+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "civora"
-primary_region = "ams"
+app = 'civora'
+primary_region = 'ams'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
+
   [build.args]
-    NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = "{{ env \"NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID\" }}"
-    NEXT_PUBLIC_CHAIN_ID = "{{ env \"NEXT_PUBLIC_CHAIN_ID\" }}"
+    NEXT_PUBLIC_CHAIN_ID = '{{ env "NEXT_PUBLIC_CHAIN_ID" }}'
+    NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = '{{ env "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID" }}'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
+
   [http_service.concurrency]
-    type = "connections"
+    type = 'connections'
     hard_limit = 1000
     soft_limit = 500
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 1
   memory_mb = 512
