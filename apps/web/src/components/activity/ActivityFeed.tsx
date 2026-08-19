@@ -83,11 +83,11 @@ function buildAssetEvents(asset: IndexedAsset, detail: AssetDetail | undefined, 
   const mon = detail?.monitor;
 
   const entries: Omit<FeedEvent, "ts" | "block">[] = [
-    { key: "register", kind: "register", tx: asset.registerTx, label: `Asset #${asset.assetId} registered`, detail: `${typeName} · ${amount}` },
-    asset.fundTx ? { key: "fund", kind: "fund", tx: asset.fundTx, label: `Asset #${asset.assetId} funded`, detail: "Principal + coupon escrowed in the vault" } : null,
-    asset.underwriteTx ? { key: "underwrite", kind: "underwrite", tx: asset.underwriteTx, label: `Asset #${asset.assetId} underwritten`, detail: uw ? (uw.decision === 1 ? "Approved · coupon cap committed" : "Rejected — escrow becomes refundable") : "AI underwrite committed" } : null,
-    asset.monitorTx ? { key: "monitor", kind: "monitor", tx: asset.monitorTx, label: `Asset #${asset.assetId} monitored`, detail: mon ? (mon.outcome === 1 ? "Target Met · penalty 0 bps" : `Target Missed · penalty ${mon.penaltyBps / 100}%`) : "AI monitor committed" } : null,
-    asset.settleTx ? { key: "settle", kind: "settle", tx: asset.settleTx, label: `Asset #${asset.assetId} settled`, detail: chain ? settleDetail(chain, mon ?? null) : "Settled" } : null,
+    { key: `asset-${asset.assetId}-register`, kind: "register", tx: asset.registerTx, label: `Asset #${asset.assetId} registered`, detail: `${typeName} · ${amount}` },
+    asset.fundTx ? { key: `asset-${asset.assetId}-fund`, kind: "fund", tx: asset.fundTx, label: `Asset #${asset.assetId} funded`, detail: "Principal + coupon escrowed in the vault" } : null,
+    asset.underwriteTx ? { key: `asset-${asset.assetId}-underwrite`, kind: "underwrite", tx: asset.underwriteTx, label: `Asset #${asset.assetId} underwritten`, detail: uw ? (uw.decision === 1 ? "Approved · coupon cap committed" : "Rejected — escrow becomes refundable") : "AI underwrite committed" } : null,
+    asset.monitorTx ? { key: `asset-${asset.assetId}-monitor`, kind: "monitor", tx: asset.monitorTx, label: `Asset #${asset.assetId} monitored`, detail: mon ? (mon.outcome === 1 ? "Target Met · penalty 0 bps" : `Target Missed · penalty ${mon.penaltyBps / 100}%`) : "AI monitor committed" } : null,
+    asset.settleTx ? { key: `asset-${asset.assetId}-settle`, kind: "settle", tx: asset.settleTx, label: `Asset #${asset.assetId} settled`, detail: chain ? settleDetail(chain, mon ?? null) : "Settled" } : null,
   ].filter((e): e is Omit<FeedEvent, "ts" | "block"> => e !== null);
 
   return withTimes(entries, times);
