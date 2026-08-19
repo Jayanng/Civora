@@ -201,7 +201,7 @@ export async function fetchAgentsPageData(
     findTotal(client, (id) => assetExists(client, id)),
   ]);
 
-  const assets = await fetchAllAssets(client, countAssets).catch(() => []);
+  const { assets } = await fetchAllAssets(client, countAssets).catch(() => ({ assets: [], capped: false }));
   const penalties = await fetchSettledPenalties(client, assets);
 
   const details = new Map<number, AgentPageDetail>();

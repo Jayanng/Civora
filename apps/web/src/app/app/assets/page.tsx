@@ -136,6 +136,15 @@ function AssetRow({
       }
     : null;
 
+  const nowTs = Math.floor(now / 1000);
+  const settleDeadline = (() => {
+    const mon = detail?.monitor?.expiresAt;
+    const grant = detail?.grant?.expiresAt;
+    if (!mon) return grant ?? null;
+    if (!grant) return mon;
+    return mon < grant ? mon : grant;
+  })();
+
   return (
     <>
       <tr className="border-t border-border align-top">
@@ -188,6 +197,19 @@ function AssetRow({
         <tr className="border-t border-border">
           <td colSpan={11} className="bg-bg px-4 py-4">
             <LifecycleStepper state={state} />
+            {state === 4 && settleDeadline ? (
+              (() => {
+                const secsLeft = Number(settleDeadline) - nowTs;
+                const expired = secsLeft <= 0;
+                return (
+                  <div className={`mt-3 border px-3 py-2 font-mono text-[11px] ${expired ? "border-error bg-error-bg text-error" : "border-warning bg-warning-bg text-warning"}`}>
+                    {expired
+                      ? `Settlement window closed — the underwrite/monitor credentials expired at ${new Date(Number(settleDeadline) * 1000).toLocaleString()}. The escrow cannot be settled or refunded on-chain.`
+                      : `Settle now — settlement credentials expire at ${new Date(Number(settleDeadline) * 1000).toLocaleString()} (${formatRemaining(secsLeft * 1000)} left). After expiry the escrow is locked on-chain.`}
+                  </div>
+                );
+              })()
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-text-tertiary">
               <span>Maturity {chain ? new Date(Number(chain.maturity) * 1000).toLocaleString() : "…"}</span>
               <span>Holder {chain ? truncateHash(chain.holder) : "…"}</span>
@@ -218,8 +240,8 @@ function AssetsPageContent() {
   const queryClient = useQueryClient();
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
-  const assetIndex = useSyncExternalStore(subscribeAssetIndex, loadAssetIndex, loadAssetIndex);
-  const agentIndex = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
+  const assetIndex = useSyncExternalStore((cb) => subscribeAssetIndex(cb, address), () => loadAssetIndex(address), () => loadAssetIndex(address));
+  const agentIndex = useSyncExternalStore((cb) => subscribeAgentIndex(cb, address), () => loadAgentIndex(address), () => loadAgentIndex(address));
   const nowMs = useNow(1000);
   const nowTs = Math.floor(nowMs / 1000);
   const [filter, setFilter] = useState(0);
@@ -365,7 +387,7 @@ function AssetsPageContent() {
       }
       const registered = decodeAssetRegisteredFromReceipt(registerReceipt);
       if (!registered) throw new Error("Registration confirmed but the AssetRegistered event was not found in the logs — this may indicate a provider issue. Try again.");
-      persistAsset({ assetId: registered.assetId, registerTx: registerReceipt.transactionHash, targetText: targetText.trim() });
+      persistAsset({ assetId: registered.assetId, registerTx: registerReceipt.transactionHash, targetText: targetText.trim() }, address);
       setFormStatus("Registration confirmed. Waiting for funding approval…");
       const fundHash = await writeContractAsync({
         address: ADDRESSES.vault,
@@ -378,8 +400,8 @@ function AssetsPageContent() {
       if (fundReceipt.status === "reverted") {
         throw new Error(`Funding transaction reverted on-chain. Tx: ${fundHash}. The asset was registered but not funded.`);
       }
-      const current = loadAssetIndex().find((a) => a.assetId === registered.assetId);
-      if (current) persistAsset({ ...current, fundTx: fundHash });
+      const current = loadAssetIndex(address).find((a) => a.assetId === registered.assetId);
+      if (current) persistAsset({ ...current, fundTx: fundHash }, address);
       queryClient.invalidateQueries({ queryKey: ["counts"] });
       queryClient.invalidateQueries({ queryKey: ["assets-page-detail"] });
       setFormStatus(null);
@@ -442,8 +464,8 @@ function AssetsPageContent() {
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
       if (receipt.status === "reverted") throw new Error(`Underwrite commit reverted on-chain. Tx: ${hash}.`);
-      const current = loadAssetIndex().find((a) => a.assetId === selected.assetId);
-      if (current) persistAsset({ ...current, underwriteTx: hash, underwriteReportHash: underwriteReport.hash });
+      const current = loadAssetIndex(address).find((a) => a.assetId === selected.assetId);
+      if (current) persistAsset({ ...current, underwriteTx: hash, underwriteReportHash: underwriteReport.hash }, address);
       queryClient.invalidateQueries({ queryKey: ["counts"] });
       queryClient.invalidateQueries({ queryKey: ["assets-page-detail"] });
       setActionStatus(null);
@@ -504,8 +526,8 @@ function AssetsPageContent() {
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
       if (receipt.status === "reverted") throw new Error(`Monitor commit reverted on-chain. Tx: ${hash}.`);
-      const current = loadAssetIndex().find((a) => a.assetId === selected.assetId);
-      if (current) persistAsset({ ...current, monitorTx: hash, monitorReportHash: monitorReport.hash });
+      const current = loadAssetIndex(address).find((a) => a.assetId === selected.assetId);
+      if (current) persistAsset({ ...current, monitorTx: hash, monitorReportHash: monitorReport.hash }, address);
       queryClient.invalidateQueries({ queryKey: ["counts"] });
       queryClient.invalidateQueries({ queryKey: ["assets-page-detail"] });
       setActionStatus(null);
@@ -516,7 +538,7 @@ function AssetsPageContent() {
         note: monitorReport.report.outcome === "targetMet"
           ? "AI compliance monitor confirmed the sustainability target was met — no penalty applied."
           : `AI compliance monitor found the target was missed — ${monitorReport.report.penaltyBps / 100}% penalty will reduce the coupon payout.`,
-        nextStep: "Next: settle the asset to distribute principal and coupon.",
+        nextStep: `Next: settle now — the settlement window closes at ${new Date(monitorReport.report.expiresAt * 1000).toLocaleString()}, when the credentials expire.`,
         rows: [
           { label: "Outcome", value: monitorReport.report.outcome === "targetMet" ? "Target met" : "Target missed" },
           { label: "Penalty", value: `${monitorReport.report.penaltyBps / 100}%` },
@@ -539,8 +561,8 @@ function AssetsPageContent() {
       const hash = await writeContractAsync({ address: ADDRESSES.vault, abi: vaultAbi, functionName: "settle", args: [BigInt(assetId)] });
       const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
       const decoded = decodeSettledFromReceipt(receipt);
-      const current = loadAssetIndex().find((a) => a.assetId === assetId);
-      if (current) persistAsset({ ...current, settleTx: hash });
+      const current = loadAssetIndex(address).find((a) => a.assetId === assetId);
+      if (current) persistAsset({ ...current, settleTx: hash }, address);
       if (!decoded) throw new Error("Settlement confirmed without Settled event.");
       setSettlement({ ...decoded, txHash: hash });
       setActionStatus("Settlement confirmed. Principal and coupon breakdown is below.");

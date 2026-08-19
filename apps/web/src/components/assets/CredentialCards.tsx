@@ -26,6 +26,7 @@ function Card({ title, tone, children }: { title: string; tone: "uw" | "mon"; ch
 
 export function CredentialCards({ detail }: { detail: AssetDetail }) {
   const now = useNow(5000);
+  const nowSec = Math.floor(now / 1000);
   const { underwrite, monitor } = detail;
 
   if (!underwrite && !monitor) return null;
@@ -36,7 +37,7 @@ export function CredentialCards({ detail }: { detail: AssetDetail }) {
         <Card title={`Underwrite credential · agent #${underwrite.agentId}`} tone="uw">
           <Row label="decision" value={underwrite.decision === DECISION.Approve ? "Approve" : "Reject"} />
           <Row label="approved" value={`${formatEther(underwrite.approvedPrincipalWei)} + ${formatEther(underwrite.approvedCouponWei)} BOT`} />
-          <Row label="expires" value={`${new Date(Number(underwrite.expiresAt) * 1000).toLocaleString()}${underwrite.expiresAt <= BigInt(now) ? " · expired" : ""}`} />
+          <Row label="expires" value={`${new Date(Number(underwrite.expiresAt) * 1000).toLocaleString()}${underwrite.expiresAt <= BigInt(nowSec) ? " · expired" : ""}`} />
           <Row label="model" value={truncateHash(underwrite.modelId, 6, 4)} />
           <Row label="report" value={<a href={`/api/reports/${underwrite.reportHash}`} target="_blank" rel="noreferrer" className="text-accent hover:text-accent-hover">{truncateHash(underwrite.reportHash, 8, 6)}</a>} />
         </Card>
@@ -46,7 +47,7 @@ export function CredentialCards({ detail }: { detail: AssetDetail }) {
           <Row label="outcome" value={monitor.outcome === MONITOR_OUTCOME.TargetMet ? "Target met" : "Target missed"} />
           <Row label="penalty" value={`${monitor.penaltyBps / 100}%${monitor.penaltyBps > 0 ? ` · ${formatEther((detail.chain.couponWei * BigInt(monitor.penaltyBps)) / 10_000n)} BOT haircut` : ""}`} />
           <Row label="observed" value={new Date(Number(monitor.observedAt) * 1000).toLocaleString()} />
-          <Row label="expires" value={`${new Date(Number(monitor.expiresAt) * 1000).toLocaleString()}${monitor.expiresAt <= BigInt(now) ? " · expired" : ""}`} />
+          <Row label="expires" value={`${new Date(Number(monitor.expiresAt) * 1000).toLocaleString()}${monitor.expiresAt <= BigInt(nowSec) ? " · expired" : ""}`} />
           <Row label="evidence" value={truncateHash(monitor.evidenceHash, 8, 6)} />
           <Row label="report" value={<a href={`/api/reports/${monitor.reportHash}`} target="_blank" rel="noreferrer" className="text-accent hover:text-accent-hover">{truncateHash(monitor.reportHash, 8, 6)}</a>} />
         </Card>

@@ -31,8 +31,8 @@ function MetricCard({ label, value, caption }: { label: string; value: string; c
 export default function DashboardPage() {
   const publicClient = usePublicClient();
   const { address } = useAccount();
-  const agents = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
-  const assets = useSyncExternalStore(subscribeAssetIndex, loadAssetIndex, loadAssetIndex);
+  const agents = useSyncExternalStore((cb) => subscribeAgentIndex(cb, address), () => loadAgentIndex(address), () => loadAgentIndex(address));
+  const assets = useSyncExternalStore((cb) => subscribeAssetIndex(cb, address), () => loadAssetIndex(address), () => loadAssetIndex(address));
   const { data: walletBalance } = useBalance({ address });
 
   const agentIds = agents.map((a) => a.agentId).join(",");
@@ -81,6 +81,7 @@ export default function DashboardPage() {
 
       {data && data.assets.length > 0 ? (
         <>
+          {data.assetsCapped ? <p className="rounded-md border border-warning bg-warning-bg px-3 py-2 font-mono text-xs text-warning">Registry has more than 256 assets — showing the first 256 in the pipeline.</p> : null}
           <section className="flex flex-col gap-4 rounded-md border border-border bg-surface p-4">
             <h2 className="font-grotesk text-sm font-medium">Asset pipeline</h2>
             <StateDistribution assets={data.assets} />
@@ -112,7 +113,7 @@ export default function DashboardPage() {
       {/* Guide only while the roster is empty — once agents exist, the checklist gives way to the live dashboard. */}
       {agents.length === 0 ? <OnboardingChecklist /> : null}
 
-      <PortfolioTable data={data ?? { assets: [], grants: [], underwrites: new Map(), monitors: new Map(), agentDetails: new Map(), agentCount: 0n, assetCount: 0n, settledCount: 0, settledValueWei: 0n, escrowValueWei: 0n, escrowCount: 0, haircutValueWei: 0n, missedCount: 0 }} indexed={assets} />
+      <PortfolioTable data={data ?? { assets: [], grants: [], underwrites: new Map(), monitors: new Map(), agentDetails: new Map(), agentCount: 0n, assetCount: 0n, settledCount: 0, settledValueWei: 0n, escrowValueWei: 0n, escrowCount: 0, haircutValueWei: 0n, missedCount: 0, assetsCapped: false }} indexed={assets} />
 
       <section className="rounded-md border border-border bg-surface p-4">
         <div className="flex items-center justify-between gap-3">

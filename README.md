@@ -107,13 +107,14 @@ Required environment values are listed in `.env.example`:
 
 ```text
 PRIVATE_KEY=
-DEPLOYER_ADDRESS=
 CIVORA_TREASURY=
 GMI_API_KEY=
 GMI_MODEL=deepseek-ai/DeepSeek-V4-Flash
 GMI_BASE_URL=https://api.gmi-serving.com/v1
 AI_RATE_LIMIT_PER_MIN=15
+AI_ROUTE_SECRET=
 BLOB_READ_WRITE_TOKEN=
+REPORT_STORE_DIR=
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
 NEXT_PUBLIC_CHAIN_ID=677
 ```

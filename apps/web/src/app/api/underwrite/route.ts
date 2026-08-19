@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { keccak256, toBytes } from "viem";
 import { putReport } from "@/lib/report-store";
-import { checkRateLimit } from "@/lib/rate-limit";
+import { guardAiRequest } from "@/lib/ai-guard";
+import { loadGmiConfig } from "@/lib/gmi-config";
 
 const SYSTEM_PROMPT = [
   "You are the Civora Underwriter Agent for sustainability-linked assets on BOT Chain.",
@@ -28,33 +27,6 @@ const SYSTEM_PROMPT = [
   }),
 ].join("\n");
 
-function loadGmiConfig(): { key: string; model: string; baseUrl: string } {
-  const key = process.env.GMI_API_KEY;
-  if (key) {
-    return {
-      key,
-      model: process.env.GMI_MODEL || "deepseek-ai/DeepSeek-V4-Flash",
-      baseUrl: process.env.GMI_BASE_URL || "https://api.gmi-serving.com/v1",
-    };
-  }
-  try {
-    const raw = readFileSync(path.resolve(process.cwd(), "../../.env"), "utf8");
-    const get = (name: string) => {
-      const m = raw.match(new RegExp(`^${name}=(.+)$`, "m"));
-      return m ? m[1].trim().replace(/^["']|["']$/g, "") : undefined;
-    };
-    const key2 = get("GMI_API_KEY");
-    if (!key2) return { key: "", model: "", baseUrl: "" };
-    return {
-      key: key2,
-      model: get("GMI_MODEL") || "deepseek-ai/DeepSeek-V4-Flash",
-      baseUrl: get("GMI_BASE_URL") || "https://api.gmi-serving.com/v1",
-    };
-  } catch {
-    return { key: "", model: "", baseUrl: "" };
-  }
-}
-
 function parseModelJson(content: string): Record<string, unknown> | null {
   const cleaned = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   try {
@@ -68,13 +40,8 @@ function parseModelJson(content: string): Record<string, unknown> | null {
 }
 
 export async function POST(req: Request) {
-  const limited = checkRateLimit(req);
-  if (!limited.allowed) {
-    return Response.json(
-      { error: "rate limit exceeded — retry shortly" },
-      { status: 429, headers: { "retry-after": String(limited.retryAfterSec) } },
-    );
-  }
+  const denied = guardAiRequest(req);
+  if (denied) return denied;
   const { key, model, baseUrl } = loadGmiConfig();
   if (!key) {
     return Response.json({ error: "underwriter unavailable" }, { status: 503 });
@@ -99,6 +66,9 @@ export async function POST(req: Request) {
   const { assetId, principalWei, couponWei, maturity, holder, issuer, targetHash, documentHash, assetType } = body;
   if (!assetId || !principalWei || !couponWei || typeof maturity !== "number" || !holder || !issuer || !targetHash || !documentHash || typeof assetType !== "number") {
     return Response.json({ error: "missing fields" }, { status: 400 });
+  }
+  if (!/^\d+$/.test(principalWei) || !/^\d+$/.test(couponWei)) {
+    return Response.json({ error: "principal and coupon must be integer wei" }, { status: 400 });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -181,6 +151,9 @@ export async function POST(req: Request) {
   if (approvedCoupon > coupon) return invalid("approvedCouponWei > couponWei");
   if (report.decision === "reject" && (approvedPrincipal !== 0n || approvedCoupon !== 0n)) return invalid("reject must have zero approvals");
   if (report.decision === "approve" && (approvedPrincipal === 0n || approvedCoupon === 0n)) return invalid("approve must have positive approvals");
+  if (report.decision === "approve" && approvedPrincipal !== principal) {
+    return invalid("approvedPrincipalWei must equal principalWei — partial principal approvals revert on-chain");
+  }
   if (report.expiresAt <= now + 600) return invalid("expiresAt too soon");
   if (report.expiresAt > maturity) return invalid("expiresAt after maturity");
 

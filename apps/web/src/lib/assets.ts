@@ -2,7 +2,12 @@ import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
 import { ADDRESSES, assetRegisteredItem, fundedItem, settledItem } from "./civora";
 
-const INDEX_KEY = "civora.assets.v1";
+const LEGACY_INDEX_KEY = "civora.assets.v1";
+
+/** Per-wallet key so switching wallets never shows another account's entities. */
+function indexKeyFor(address?: string): string {
+  return address ? `${LEGACY_INDEX_KEY}.${address.toLowerCase()}` : LEGACY_INDEX_KEY;
+}
 
 export interface IndexedAsset {
   assetId: number;
@@ -17,9 +22,9 @@ export interface IndexedAsset {
   targetText?: string;
 }
 
-function readIndexFromStorage(): IndexedAsset[] {
+function readIndexFromStorage(key: string): IndexedAsset[] {
   try {
-    const raw = window.localStorage.getItem(INDEX_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -32,33 +37,35 @@ function readIndexFromStorage(): IndexedAsset[] {
   }
 }
 
-let cachedIndex: IndexedAsset[] | null = null;
+const cache = new Map<string, IndexedAsset[] | null>();
 
-export function loadAssetIndex(): IndexedAsset[] {
+export function loadAssetIndex(address?: string): IndexedAsset[] {
   if (typeof window === "undefined") return [];
-  if (cachedIndex === null) cachedIndex = readIndexFromStorage();
-  return cachedIndex;
+  const key = indexKeyFor(address);
+  if (!cache.has(key)) cache.set(key, readIndexFromStorage(key));
+  return cache.get(key) ?? [];
 }
 
-function invalidateIndex(): void {
-  cachedIndex = null;
+function invalidateIndex(address?: string): void {
+  cache.delete(indexKeyFor(address));
 }
 
-export function persistAsset(asset: IndexedAsset): void {
+export function persistAsset(asset: IndexedAsset, address?: string): void {
   if (typeof window === "undefined") return;
-  const current = loadAssetIndex();
+  const key = indexKeyFor(address);
+  const current = loadAssetIndex(address);
   const next = current.some((a) => a.assetId === asset.assetId)
     ? current.map((a) => (a.assetId === asset.assetId ? asset : a))
     : [...current, asset];
-  window.localStorage.setItem(INDEX_KEY, JSON.stringify(next));
-  invalidateIndex();
+  window.localStorage.setItem(key, JSON.stringify(next));
+  invalidateIndex(address);
   window.dispatchEvent(new Event("civora:assets-changed"));
 }
 
-export function subscribeAssetIndex(onChange: () => void): () => void {
+export function subscribeAssetIndex(onChange: () => void, address?: string): () => void {
   if (typeof window === "undefined") return () => {};
   const handler = () => {
-    invalidateIndex();
+    invalidateIndex(address);
     onChange();
   };
   window.addEventListener("civora:assets-changed", handler);

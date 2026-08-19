@@ -89,14 +89,21 @@ export interface DashboardData {
   escrowCount: number;
   haircutValueWei: bigint;
   missedCount: number;
+  /** True when the registry exceeded the read cap and assets is not exhaustive. */
+  assetsCapped: boolean;
 }
 
 const SETTLE_SELECTOR = toFunctionSelector("settle(uint256)") as `0x${string}`;
 
-export async function fetchAllAssets(client: ReadClient, total: bigint, maxAssets = 256n): Promise<FullAsset[]> {
-  if (total > maxAssets) return [];
+export async function fetchAllAssets(
+  client: ReadClient,
+  total: bigint,
+  maxAssets = 256n,
+): Promise<{ assets: FullAsset[]; capped: boolean }> {
+  const capped = total > maxAssets;
+  const toRead = capped ? maxAssets : total;
   const results = await Promise.all(
-    Array.from({ length: Number(total) }, (_, i) =>
+    Array.from({ length: Number(toRead) }, (_, i) =>
       client
         .readContract({
           address: ADDRESSES.assets,
@@ -128,7 +135,7 @@ export async function fetchAllAssets(client: ReadClient, total: bigint, maxAsset
       state: Number(a[11]),
     });
   }
-  return out;
+  return { assets: out, capped };
 }
 
 export function grantKey(assetId: number, agentId: number, selector: `0x${string}`): `0x${string}` {
@@ -241,7 +248,7 @@ export async function fetchDashboardData(client: ReadClientFull, agentIds: numbe
     findTotal(client, (id) => assetExists(client, id)),
   ]);
 
-  const assets = await fetchAllAssets(client, countAssets).catch(() => []);
+  const { assets, capped } = await fetchAllAssets(client, countAssets).catch(() => ({ assets: [], capped: false }));
   const [grants, { underwrites, monitors }, agentDetails] = await Promise.all([
     fetchGrantsFor(client, assets),
     fetchCredentialsFor(client, assets),
@@ -286,5 +293,6 @@ export async function fetchDashboardData(client: ReadClientFull, agentIds: numbe
     escrowCount,
     haircutValueWei,
     missedCount,
+    assetsCapped: capped,
   };
 }

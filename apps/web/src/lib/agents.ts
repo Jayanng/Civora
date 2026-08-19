@@ -2,7 +2,12 @@ import { decodeEventLog } from "viem";
 import type { TransactionReceipt } from "viem";
 import { ADDRESSES, agentCreatedItem } from "./civora";
 
-const INDEX_KEY = "civora.agents.v2";
+const LEGACY_INDEX_KEY = "civora.agents.v2";
+
+/** Per-wallet key so switching wallets never shows another account's entities. */
+function indexKeyFor(address?: string): string {
+  return address ? `${LEGACY_INDEX_KEY}.${address.toLowerCase()}` : LEGACY_INDEX_KEY;
+}
 
 export interface IndexedAgent {
   agentId: number;
@@ -11,9 +16,9 @@ export interface IndexedAgent {
   agentType?: number;
 }
 
-function readIndexFromStorage(): IndexedAgent[] {
+function readIndexFromStorage(key: string): IndexedAgent[] {
   try {
-    const raw = window.localStorage.getItem(INDEX_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -29,33 +34,35 @@ function readIndexFromStorage(): IndexedAgent[] {
   }
 }
 
-let cachedIndex: IndexedAgent[] | null = null;
+const cache = new Map<string, IndexedAgent[] | null>();
 
-export function loadAgentIndex(): IndexedAgent[] {
+export function loadAgentIndex(address?: string): IndexedAgent[] {
   if (typeof window === "undefined") return [];
-  if (cachedIndex === null) cachedIndex = readIndexFromStorage();
-  return cachedIndex;
+  const key = indexKeyFor(address);
+  if (!cache.has(key)) cache.set(key, readIndexFromStorage(key));
+  return cache.get(key) ?? [];
 }
 
-function invalidateIndex(): void {
-  cachedIndex = null;
+function invalidateIndex(address?: string): void {
+  cache.delete(indexKeyFor(address));
 }
 
-export function persistAgent(agent: IndexedAgent): void {
+export function persistAgent(agent: IndexedAgent, address?: string): void {
   if (typeof window === "undefined") return;
-  const current = loadAgentIndex();
+  const key = indexKeyFor(address);
+  const current = loadAgentIndex(address);
   const next = current.some((a) => a.agentId === agent.agentId)
     ? current.map((a) => (a.agentId === agent.agentId ? agent : a))
     : [...current, agent];
-  window.localStorage.setItem(INDEX_KEY, JSON.stringify(next));
-  invalidateIndex();
+  window.localStorage.setItem(key, JSON.stringify(next));
+  invalidateIndex(address);
   window.dispatchEvent(new Event("civora:index-changed"));
 }
 
-export function subscribeAgentIndex(onChange: () => void): () => void {
+export function subscribeAgentIndex(onChange: () => void, address?: string): () => void {
   if (typeof window === "undefined") return () => {};
   const handler = () => {
-    invalidateIndex();
+    invalidateIndex(address);
     onChange();
   };
   window.addEventListener("civora:index-changed", handler);

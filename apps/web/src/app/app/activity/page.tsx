@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { usePublicClient } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { loadAgentIndex, subscribeAgentIndex, type IndexedAgent } from "@/lib/agents";
 import { loadAssetIndex, subscribeAssetIndex, type IndexedAsset } from "@/lib/assets";
 import { fetchAssetDetails } from "@/lib/assets-page";
@@ -34,13 +34,24 @@ function useTxTimes(hashes: `0x${string}`[], nonce: number): Record<string, TxIn
 
 export default function ActivityPage() {
   const publicClient = usePublicClient();
-  const agents = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
-  const assets = useSyncExternalStore(subscribeAssetIndex, loadAssetIndex, loadAssetIndex);
+  const { address } = useAccount();
+  const agents = useSyncExternalStore((cb) => subscribeAgentIndex(cb, address), () => loadAgentIndex(address), () => loadAgentIndex(address));
+  const assets = useSyncExternalStore((cb) => subscribeAssetIndex(cb, address), () => loadAssetIndex(address), () => loadAssetIndex(address));
   const [query, setQuery] = useState("");
   const [entity, setEntity] = useState<EntityFilter>("all");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [view, setView] = useState<"grouped" | "timeline">("grouped");
   const [nonce, setNonce] = useState(0);
+
+  const KIND_LABELS: Record<KindFilter, string> = {
+    all: "All events",
+    agent: "Created",
+    register: "Registered",
+    fund: "Funded",
+    underwrite: "Underwritten",
+    monitor: "Monitored",
+    settle: "Settled",
+  };
 
   const assetIds = assets.map((a) => a.assetId).join(",");
   const agentIds = agents.map((a) => a.agentId).join(",");
@@ -115,7 +126,7 @@ export default function ActivityPage() {
             <div className="flex items-center gap-1">
               {(["all", "agent", "register", "fund", "underwrite", "monitor", "settle"] as const).map((k) => (
                 <button key={k} type="button" onClick={() => setKindFilter(k)} className={`border px-2.5 py-1 font-mono text-[11px] ${kindFilter === k ? "border-accent bg-accent-muted text-accent-strong" : "border-border bg-bg text-text-secondary hover:border-accent"}`}>
-                  {k === "all" ? "All events" : k === "agent" ? "Created" : k[0].toUpperCase() + k.slice(1) + "d"}
+                  {KIND_LABELS[k]}
                 </button>
               ))}
             </div>

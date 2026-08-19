@@ -143,7 +143,7 @@ export default function AgentsPage() {
   const publicClient = usePublicClient();
   const queryClient = useQueryClient();
 
-  const index = useSyncExternalStore(subscribeAgentIndex, loadAgentIndex, loadAgentIndex);
+  const index = useSyncExternalStore((cb) => subscribeAgentIndex(cb, address), () => loadAgentIndex(address), () => loadAgentIndex(address));
   const [name, setName] = useState("");
   const [agentType, setAgentType] = useState<1 | 2 | 3>(AGENT_TYPE.Underwriter);
   const [formError, setFormError] = useState<string | null>(null);
@@ -208,7 +208,7 @@ export default function AgentsPage() {
       }
       const decoded = decodeAgentCreatedFromReceipt(receipt);
       if (decoded) {
-        persistAgent({ agentId: decoded.agentId, txHash: receipt.transactionHash, agentType: decoded.agentType });
+        persistAgent({ agentId: decoded.agentId, txHash: receipt.transactionHash, agentType: decoded.agentType }, address);
         queryClient.invalidateQueries({ queryKey: ["counts"] });
         queryClient.invalidateQueries({ queryKey: ["agents-page"] });
         setTxDone(true);

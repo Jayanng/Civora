@@ -26,7 +26,7 @@ export function PortfolioTable({ data, indexed }: { data: DashboardData; indexed
       .filter((a) => (typeFilter === "all" ? true : a.assetType === Number(typeFilter)));
     const dir = sortDir === "asc" ? 1 : -1;
     return [...out].sort((a, b) => {
-      if (sortKey === "escrow") return (Number(a.principalWei + a.couponWei) - Number(b.principalWei + b.couponWei)) * dir;
+      if (sortKey === "escrow") return ((a.principalWei + a.couponWei < b.principalWei + b.couponWei ? -1 : 1)) * dir;
       if (sortKey === "maturity") return (Number(a.maturity) - Number(b.maturity)) * dir;
       return (a.assetId - b.assetId) * dir;
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { keccak256, toBytes } from "viem";
+import { formatEther, keccak256, toBytes } from "viem";
 import { AGENT_TYPE_NAMES, ASSET_STATE_NAMES } from "@/lib/civora";
 import type { DashboardData } from "@/lib/dashboard";
 import { truncateHash } from "@/components/TxLink";
@@ -105,6 +105,7 @@ export function CredentialIntegrity({ indexed }: { indexed: IndexedAsset[] }) {
 /** Every active settle grant, read live from the permission engine. */
 export function PermissionSnapshot({ data }: { data: DashboardData }) {
   const now = useNow(5000);
+  const nowSec = Math.floor(now / 1000);
   if (data.grants.length === 0) {
     return (
       <div className="rounded-md border border-border bg-surface p-4">
@@ -131,7 +132,7 @@ export function PermissionSnapshot({ data }: { data: DashboardData }) {
           <tbody className="font-mono text-[11px]">
             {data.grants.map((g) => {
               const agent = data.agentDetails.get(Number(g.agentId));
-              const expired = g.expiresAt <= BigInt(now);
+              const expired = g.expiresAt <= BigInt(nowSec);
               return (
                 <tr key={g.grantId.toString()} className="border-t border-border">
                   <td className="py-1.5 pr-3 text-text-primary">#{g.grantId.toString()}</td>
@@ -141,7 +142,7 @@ export function PermissionSnapshot({ data }: { data: DashboardData }) {
                     <span className="text-text-tertiary"> ({AGENT_TYPE_NAMES[3]})</span>
                   </td>
                   <td className="py-1.5 pr-3 text-text-tertiary">settle()</td>
-                  <td className="py-1.5 pr-3 text-text-primary">{(Number(g.maxValue) / 1e18).toFixed(2)} BOT</td>
+                  <td className="py-1.5 pr-3 text-text-primary">{Number(formatEther(g.maxValue)).toFixed(2)} BOT</td>
                   <td className="py-1.5">
                     {g.revoked ? (
                       <span className="rounded-sm bg-error-bg px-1.5 py-0.5 text-[10px] text-error">revoked</span>

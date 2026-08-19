@@ -6,6 +6,7 @@ import { useNow } from "@/components/dashboard/useNow";
 
 export function SettleGrantCard({ detail }: { detail: AssetDetail }) {
   const now = useNow(5000);
+  const nowSec = Math.floor(now / 1000);
   const g = detail.grant;
 
   if (!g) {
@@ -17,7 +18,7 @@ export function SettleGrantCard({ detail }: { detail: AssetDetail }) {
     );
   }
 
-  const expired = g.expiresAt <= BigInt(now);
+  const expired = g.expiresAt <= BigInt(nowSec);
   const status = g.revoked ? "revoked" : expired ? "expired" : "active";
   const tone = g.revoked || expired ? "text-error" : "text-success";
 
